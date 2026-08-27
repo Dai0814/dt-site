@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="theme-color" content="#fff9f5">
+  <meta name="format-detection" content="telephone=no">
+  <title>D & T | 回忆相册</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="page-prep" data-page="album">
+  <canvas id="skyCanvas" aria-hidden="true"></canvas>
+  <audio id="albumMusic" src="assets/album-bgm.mp3" autoplay loop preload="auto"></audio>
+
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="情侣主页">D & T</a>
+    <nav class="site-nav" aria-label="页面导航">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="story.html" data-nav="story">故事</a>
+      <a href="daily.html" data-nav="daily">日常</a>
+      <a href="notes.html" data-nav="notes">碎碎念</a>
+      <a href="travel.html" data-nav="travel">旅行地图</a>
+      <a href="album.html" data-nav="album">相册</a>
+      <a href="wishes.html" data-nav="wishes">愿望</a>
+      <button class="logout-button" type="button" data-logout>退出</button>
+    </nav>
+  </header>
+
+  <main class="page-main">
+    <section class="page-hero">
+      <p class="eyebrow">Moments</p>
+      <h1>回忆相册</h1>
+      <p data-edit-key="album.hero.text">点击任意照片位上传本地图片，照片会保存在当前浏览器里。</p>
+    </section>
+
+    <section class="section moments-section">
+      <div class="album-toolbar">
+        <div>
+          <span class="eyebrow">Memory Wall</span>
+          <strong id="albumPhotoCount">0 张照片</strong>
+        </div>
+        <button class="album-add-button" type="button" data-album-photo-open>新增照片</button>
+      </div>
+      <form class="content-compose album-compose-shell" id="albumPhotoForm" hidden>
+        <div class="content-compose-head">
+          <strong>新增照片</strong>
+          <p id="albumPhotoMessage" role="status"></p>
+        </div>
+        <div class="content-compose-fields album-compose-fields">
+          <label>
+            <span>照片标题</span>
+            <input id="albumPhotoCaption" name="caption" type="text" maxlength="48" placeholder="比如：某个晴天">
+          </label>
+          <label>
+            <span>内容</span>
+            <textarea id="albumPhotoContent" name="content" rows="3" maxlength="500" placeholder="写下这张照片里的故事"></textarea>
+          </label>
+          <label>
+            <span>上传照片</span>
+            <input id="albumPhotoInput" name="photo" type="file" accept="image/*">
+          </label>
+          <label data-edit-time-field hidden>
+            <span>编辑时间</span>
+            <input id="albumPhotoUpdatedAt" type="datetime-local">
+          </label>
+          <div class="content-compose-actions">
+            <button type="submit">新增照片</button>
+            <button class="ghost-action" type="button" data-album-photo-cancel hidden>取消编辑</button>
+            <button class="danger-action" type="button" data-album-photo-delete hidden>删除</button>
+          </div>
+        </div>
+      </form>
+      <div class="photo-grid photo-grid-page photo-wall legacy-album-slots" aria-hidden="true">
+        <label class="photo-card">
+          <input type="file" accept="image/*" data-photo="0">
+          <img alt="回忆照片一" data-photo-preview="0">
+          <span data-edit-key="album.1.caption">日落时分</span>
+        </label>
+        <label class="photo-card">
+          <input type="file" accept="image/*" data-photo="1">
+          <img alt="回忆照片二" data-photo-preview="1">
+          <span data-edit-key="album.2.caption">一起出发</span>
+        </label>
+        <label class="photo-card">
+          <input type="file" accept="image/*" data-photo="2">
+          <img alt="回忆照片三" data-photo-preview="2">
+          <span data-edit-key="album.3.caption">靠近一点</span>
+        </label>
+      </div>
+      <div class="photo-grid photo-grid-page content-entry-list photo-wall" id="albumPhotoList"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Made for <span id="footerNameA">D</span> & <span id="footerNameB">T</span></p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

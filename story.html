@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="theme-color" content="#fff9f5">
+  <meta name="format-detection" content="telephone=no">
+  <title>D & T | 我们的故事</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="page-prep" data-page="story">
+  <canvas id="skyCanvas" aria-hidden="true"></canvas>
+
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="情侣主页">D & T</a>
+    <nav class="site-nav" aria-label="页面导航">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="story.html" data-nav="story">故事</a>
+      <a href="daily.html" data-nav="daily">日常</a>
+      <a href="notes.html" data-nav="notes">碎碎念</a>
+      <a href="travel.html" data-nav="travel">旅行地图</a>
+      <a href="album.html" data-nav="album">相册</a>
+      <a href="wishes.html" data-nav="wishes">愿望</a>
+      <button class="logout-button" type="button" data-logout>退出</button>
+    </nav>
+  </header>
+
+  <main class="page-main">
+    <section class="page-hero">
+      <p class="eyebrow">Timeline</p>
+      <h1>我们的故事</h1>
+      <p data-edit-key="story.hero.text">把那些让心跳变快的瞬间，按照时间慢慢保存。</p>
+    </section>
+
+    <section class="section milestone-section" aria-labelledby="milestoneTitle">
+      <div class="section-heading milestone-heading">
+        <p class="eyebrow">Milestones</p>
+        <h2 id="milestoneTitle">重要时刻</h2>
+        <p>用一条长轴，标记我们一起走过的关键节点。</p>
+      </div>
+      <div class="story-timeline milestone-axis content-entry-list" data-content-list="storyTimeline" aria-live="polite"></div>
+      <form class="content-compose milestone-compose" data-content-form="storyTimeline">
+        <div class="content-compose-head">
+          <strong>添加重要时刻</strong>
+          <p data-content-message role="status"></p>
+        </div>
+        <div class="content-compose-fields">
+          <label>
+            <span>日期</span>
+            <input name="eventDate" type="date" required>
+          </label>
+          <label>
+            <span>事件标题</span>
+            <input name="title" type="text" maxlength="48" placeholder="例如：正式在一起" required>
+          </label>
+          <label class="content-compose-wide">
+            <span>简短说明</span>
+            <textarea name="text" rows="2" maxlength="1000" placeholder="留下这个节点的意义"></textarea>
+          </label>
+          <div class="content-compose-actions">
+            <button type="submit">添加时刻</button>
+            <button class="ghost-action" type="button" data-content-cancel hidden>取消编辑</button>
+            <button class="danger-action" type="button" data-content-delete-entry hidden>删除</button>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <section class="section story-records-section" aria-labelledby="storyRecordsTitle">
+      <div class="section-heading story-records-heading">
+        <p class="eyebrow">Story Notes</p>
+        <h2 id="storyRecordsTitle">故事记录</h2>
+        <p>把日常里值得记住的片段，慢慢写成属于我们的故事。</p>
+      </div>
+      <div class="story-record-list content-entry-list" data-content-list="story" aria-live="polite"></div>
+      <form class="content-compose story-record-compose" data-content-form="story">
+        <div class="content-compose-head">
+          <strong>添加新故事</strong>
+          <p data-content-message role="status"></p>
+        </div>
+        <div class="content-compose-fields">
+          <label>
+            <span>时间</span>
+            <input name="time" type="date" aria-label="选择故事日期">
+          </label>
+          <label>
+            <span>标题</span>
+            <input name="title" type="text" maxlength="48" placeholder="写一个故事标题" required>
+          </label>
+          <label class="content-compose-wide">
+            <span>故事内容</span>
+            <textarea name="text" rows="4" maxlength="1000" placeholder="写下这个片段"></textarea>
+          </label>
+          <div class="content-compose-actions">
+            <button type="submit">添加故事</button>
+            <button class="ghost-action" type="button" data-content-cancel hidden>取消编辑</button>
+            <button class="danger-action" type="button" data-content-delete-entry hidden>删除</button>
+          </div>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Made for <span id="footerNameA">D</span> & <span id="footerNameB">T</span></p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

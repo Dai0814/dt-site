@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="theme-color" content="#fff9f5">
+  <meta name="format-detection" content="telephone=no">
+  <title>D & T | 日常</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="page-prep" data-page="daily">
+  <canvas id="skyCanvas" aria-hidden="true"></canvas>
+
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="情侣主页">D & T</a>
+    <nav class="site-nav" aria-label="页面导航">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="story.html" data-nav="story">故事</a>
+      <a href="daily.html" data-nav="daily">日常</a>
+      <a href="notes.html" data-nav="notes">碎碎念</a>
+      <a href="travel.html" data-nav="travel">旅行地图</a>
+      <a href="album.html" data-nav="album">相册</a>
+      <a href="wishes.html" data-nav="wishes">愿望</a>
+      <button class="logout-button" type="button" data-logout>退出</button>
+    </nav>
+  </header>
+
+  <main class="page-main">
+    <section class="page-hero">
+      <p class="eyebrow">Daily Notes</p>
+      <h1>日常</h1>
+      <p data-edit-key="daily.hero.text">真正珍贵的不是大事，是每一天都有人惦记、有人分享。</p>
+    </section>
+
+    <section class="section daily-section">
+      <form class="content-compose" data-content-form="daily">
+        <div class="content-compose-head">
+          <strong>新增日常</strong>
+          <p data-content-message role="status"></p>
+        </div>
+        <div class="content-compose-fields">
+          <label>
+            <span>标签</span>
+            <input name="label" type="text" maxlength="24" placeholder="比如：Morning / Chat">
+          </label>
+          <label>
+            <span>标题</span>
+            <input name="title" type="text" maxlength="48" placeholder="写一个标题">
+          </label>
+          <label class="content-compose-wide">
+            <span>内容</span>
+            <textarea name="text" rows="3" maxlength="500" placeholder="写下今天的小事"></textarea>
+          </label>
+          <label class="content-compose-wide" data-edit-time-field hidden>
+            <span>编辑时间</span>
+            <input name="updatedAt" type="datetime-local">
+          </label>
+          <div class="content-compose-actions">
+            <button type="submit">新增日常</button>
+            <button class="ghost-action" type="button" data-content-cancel hidden>取消编辑</button>
+            <button class="danger-action" type="button" data-content-delete-entry hidden>删除</button>
+          </div>
+        </div>
+      </form>
+      <div class="daily-grid">
+        <article class="daily-card-item">
+          <span data-edit-key="daily.1.label">Morning</span>
+          <h3 data-edit-key="daily.1.title">一起醒来的早晨</h3>
+          <p data-edit-key="daily.1.text">一句早安，一杯热饮，把今天变得柔软一点。</p>
+        </article>
+        <article class="daily-card-item">
+          <span data-edit-key="daily.2.label">Chat</span>
+          <h3 data-edit-key="daily.2.title">随手分享的小事</h3>
+          <p data-edit-key="daily.2.text">路上的云、听到的歌、突然想到的话，都想第一个告诉你。</p>
+        </article>
+        <article class="daily-card-item">
+          <span data-edit-key="daily.3.label">Night</span>
+          <h3 data-edit-key="daily.3.title">睡前的晚安</h3>
+          <p data-edit-key="daily.3.text">今天也辛苦了，明天也要继续在彼此身边。</p>
+        </article>
+      </div>
+      <div class="daily-grid content-entry-list" data-content-list="daily"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Made for <span id="footerNameA">D</span> & <span id="footerNameB">T</span></p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

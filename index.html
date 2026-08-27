@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="theme-color" content="#fff9f5">
+  <meta name="format-detection" content="telephone=no">
+  <title>D & T</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="page-prep" data-page="home">
+  <canvas id="skyCanvas" aria-hidden="true"></canvas>
+  <audio id="homeMusic" src="assets/home-bgm.mp3" autoplay loop preload="auto"></audio>
+
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="情侣主页">D & T</a>
+    <nav class="site-nav" aria-label="页面导航">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="story.html" data-nav="story">故事</a>
+      <a href="daily.html" data-nav="daily">日常</a>
+      <a href="notes.html" data-nav="notes">碎碎念</a>
+      <a href="travel.html" data-nav="travel">旅行地图</a>
+      <a href="album.html" data-nav="album">相册</a>
+      <a href="wishes.html" data-nav="wishes">愿望</a>
+      <button class="logout-button" type="button" data-logout>退出</button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" id="home">
+      <div class="hero-content">
+        <p class="eyebrow">Our Little Planet</p>
+        <h1><span id="heroNameA">D</span> & <span id="heroNameB">T</span></h1>
+        <p class="hero-copy" data-edit-key="home.hero.copy">把普通的日子收藏起来，让每一次见面、每一句晚安、每一段路都变成只属于我们的坐标。</p>
+        <div class="hero-actions" aria-label="主页操作">
+          <a class="button primary" href="story.html">看我们的故事</a>
+          <a class="button ghost" href="#settings" data-editor-only>定制主页</a>
+        </div>
+      </div>
+
+      <div class="time-panel" aria-label="恋爱计时">
+        <p>已经在一起</p>
+        <strong id="daysTogether">0</strong>
+        <span>天</span>
+        <div class="time-grid">
+          <div><b id="hoursTogether">00</b><small>小时</small></div>
+          <div><b id="minutesTogether">00</b><small>分钟</small></div>
+          <div><b id="secondsTogether">00</b><small>秒</small></div>
+        </div>
+      </div>
+
+      <button class="love-line-card" id="loveLineCard" type="button" aria-label="切换情话">
+        <span class="love-line-label">今日情话 · 点击换一句</span>
+        <span class="love-line-text" id="loveLineText">有你在的每个瞬间，我都想说好幸福。</span>
+      </button>
+    </section>
+
+    <section class="section gateway-section" aria-label="分页面入口">
+      <div class="section-heading">
+        <p class="eyebrow">Explore</p>
+        <h2>把回忆分门别类</h2>
+      </div>
+      <div class="gateway-grid">
+        <a class="gateway-card story-card" href="story.html">
+          <span>01</span>
+          <h3 data-edit-key="home.card.story.title">故事</h3>
+          <p data-edit-key="home.card.story.text">用时间线记录从心动到现在的每一个重要片段。</p>
+        </a>
+        <a class="gateway-card daily-card" href="daily.html">
+          <span>02</span>
+          <h3 data-edit-key="home.card.daily.title">日常</h3>
+          <p data-edit-key="home.card.daily.text">记录每天的小事，早餐、散步、聊天和那些不起眼的开心。</p>
+        </a>
+        <a class="gateway-card notes-card" href="notes.html">
+          <span>03</span>
+          <h3 data-edit-key="home.card.notes.title">碎碎念</h3>
+          <p data-edit-key="home.card.notes.text">存放那些突然想说的话，短短一句也算认真想你。</p>
+        </a>
+        <a class="gateway-card travel-card" href="travel.html">
+          <span>04</span>
+          <h3 data-edit-key="home.card.travel.title">旅行地图</h3>
+          <p data-edit-key="home.card.travel.text">标记一起去过和想去的地方，把世界慢慢走成回忆。</p>
+        </a>
+        <a class="gateway-card album-card" href="album.html">
+          <span>05</span>
+          <h3 data-edit-key="home.card.album.title">相册</h3>
+          <p data-edit-key="home.card.album.text">上传你们自己的照片，让页面变成专属回忆册。</p>
+        </a>
+        <a class="gateway-card wishes-card" href="wishes.html">
+          <span>06</span>
+          <h3 data-edit-key="home.card.wishes.title">愿望</h3>
+          <p data-edit-key="home.card.wishes.text">把想一起完成的事写下来，一件一件打勾。</p>
+        </a>
+      </div>
+    </section>
+
+    <section class="section settings-section" id="settings">
+      <div class="section-heading">
+        <p class="eyebrow">Personalize</p>
+        <h2>定制主页</h2>
+      </div>
+      <form class="settings-form" id="settingsForm">
+        <label>
+          <span>你的昵称</span>
+          <input id="nameA" type="text" maxlength="12" value="D">
+        </label>
+        <label>
+          <span>TA 的昵称</span>
+          <input id="nameB" type="text" maxlength="12" value="T">
+        </label>
+        <label>
+          <span>纪念日</span>
+          <input id="startDate" type="date" value="2026-05-26">
+        </label>
+        <label>
+          <span>开始时间</span>
+          <input id="startTime" type="time" step="1" value="23:29:00">
+        </label>
+        <label>
+          <span>登录暗号</span>
+          <input id="loginCodeSetting" type="password" maxlength="16" autocomplete="new-password" value="20260526">
+        </label>
+        <button type="submit">保存设定</button>
+      </form>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Made for <span id="footerNameA">D</span> & <span id="footerNameB">T</span></p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

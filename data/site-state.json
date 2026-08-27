@@ -1,0 +1,34 @@
+{
+  "nameA": "D",
+  "nameB": "T",
+  "accessCode": "20260526",
+  "editCode": "20260610",
+  "startDate": "2026-05-26",
+  "startTime": "23:29:00",
+  "wishes": [
+    { "text": "\u4e00\u8d77\u770b\u4e00\u6b21\u6d77\u8fb9\u65e5\u51fa", "done": false },
+    { "text": "\u62cd\u4e00\u7ec4\u53ea\u5c5e\u4e8e\u6211\u4eec\u7684\u7167\u7247", "done": false },
+    { "text": "\u628a\u559c\u6b22\u7684\u57ce\u5e02\u6162\u6162\u8d70\u5b8c", "done": false }
+  ],
+  "photos": ["", "", ""],
+  "travelEntries": [
+    { "id": "travel-sanya", "place": "\u4e09\u4e9a", "status": "wishlist", "note": "\u4e0b\u4e00\u6b21\u53bb\u770b\u6d77\uff0c\u628a\u65e5\u843d\u548c\u98ce\u90fd\u5e26\u56de\u6765\u3002", "photo": "", "x": 65, "y": 94 },
+    { "id": "travel-1784619097306-pgmdv1jeoq", "place": "\u5357\u4eac", "status": "next", "note": "\u68a7\u6850\u5927\u9053\u3001\u5148\u950b\u4e66\u5e97", "photo": "", "x": 75, "y": 65 },
+    { "id": "travel-1784619069686-35nwj8p9ehb", "place": "\u6d4e\u5357", "status": "visited", "note": "\u7b2c\u4e00\u5f20\u62cd\u7acb\u5f97\u3002", "photo": "", "x": 72, "y": 53 },
+    { "id": "travel-1784540536801-scmtxm60l2a", "place": "\u6ca7\u5dde", "status": "visited", "note": "\u6211\u4eec\u7684\u7b2c\u4e00\u6b21\u89c1\u9762\u3002", "photo": "", "x": 66.7002863961039, "y": 45.74821554621848 },
+    { "id": "travel-chengdu", "place": "\u6210\u90fd", "status": "wishlist", "note": "\u60f3\u53bb\u8857\u5df7\u91cc\u6162\u6162\u8d70\uff0c\u5403\u4e00\u987f\u70ed\u6c14\u817e\u817e\u7684\u706b\u9505\u3002", "photo": "", "x": 51, "y": 68 }
+  ],
+  "contentEntries": {
+    "story": [],
+    "daily": [],
+    "notes": [],
+    "storyTimeline": [
+      { "eventDate": "2026-05-20", "title": "第一次牵手", "text": "手心有点出汗，但谁也不想先松开。", "image": "", "imageSize": "medium" },
+      { "eventDate": "2026-05-26", "title": "正式在一起", "text": "那天晚上风很轻，你说‘好’。", "image": "", "imageSize": "medium" },
+      { "eventDate": "2026-06-10", "title": "第一次旅行", "text": "济南的夏天，我们走了两万多步。", "image": "", "imageSize": "medium" }
+    ]
+  },
+  "edits": {},
+  "editTimes": {},
+  "updatedAt": "1784623002332"
+}

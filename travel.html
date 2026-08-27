@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="theme-color" content="#fff9f5">
+  <meta name="format-detection" content="telephone=no">
+  <title>D & T | 旅行地图</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="page-prep" data-page="travel">
+  <canvas id="skyCanvas" aria-hidden="true"></canvas>
+
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="情侣主页">D & T</a>
+    <nav class="site-nav" aria-label="页面导航">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="story.html" data-nav="story">故事</a>
+      <a href="daily.html" data-nav="daily">日常</a>
+      <a href="notes.html" data-nav="notes">碎碎念</a>
+      <a href="travel.html" data-nav="travel">旅行地图</a>
+      <a href="album.html" data-nav="album">相册</a>
+      <a href="wishes.html" data-nav="wishes">愿望</a>
+      <button class="logout-button" type="button" data-logout>退出</button>
+    </nav>
+  </header>
+
+  <main class="page-main">
+    <section class="page-hero">
+      <p class="eyebrow">Travel Map</p>
+      <h1>旅行地图</h1>
+      <p data-edit-key="travel.hero.text">把一起去过的地方点亮，也把还没出发的约定放在地图上。</p>
+    </section>
+
+    <section class="section travel-section">
+      <div class="travel-intro-grid">
+        <article>
+          <span data-edit-key="travel.1.label">Visited</span>
+          <h3 data-edit-key="travel.1.title">一起走过的地方</h3>
+          <p data-edit-key="travel.1.text">把到达过的城市、街角、海边和车站都记录下来。</p>
+        </article>
+        <article>
+          <span data-edit-key="travel.2.label">Next</span>
+          <h3 data-edit-key="travel.2.title">下一次出发</h3>
+          <p data-edit-key="travel.2.text">选一个想去很久的地方，订下属于你们的下一站。</p>
+        </article>
+      </div>
+
+      <div class="travel-map-layout">
+        <div class="travel-map-shell">
+          <form class="travel-place-form" id="travelPlaceForm">
+            <div class="travel-tool-head">
+              <div>
+                <span>Map Marker</span>
+                <strong>标记一座城市</strong>
+              </div>
+              <p id="travelFormMessage" role="status">可搜全国城市、区县、景点和详细地址。</p>
+            </div>
+            <div class="travel-fields">
+              <label class="travel-search-field">
+                <span>查找地点</span>
+                <input id="travelPlaceInput" type="search" list="travelPlaceOptions" placeholder="城市 / 区县 / 景点 / 地址" autocomplete="off">
+              </label>
+              <label>
+                <span>标记</span>
+                <select id="travelStatus">
+                  <option value="visited">来过</option>
+                  <option value="wishlist">想去</option>
+                  <option value="next">下一站</option>
+                </select>
+              </label>
+              <label class="travel-note-field">
+                <span>文字</span>
+                <textarea id="travelNote" rows="3" maxlength="500" placeholder="写下这座城市的回忆或约定"></textarea>
+              </label>
+              <label class="travel-photo-field">
+                <span>照片</span>
+                <input id="travelPhoto" type="file" accept="image/*">
+                <b>选择照片</b>
+              </label>
+              <label class="travel-date-field" data-visit-date-field>
+                <span>来到这里的时间</span>
+                <input id="travelVisitDate" type="date">
+              </label>
+              <button type="submit">添加到地图</button>
+            <button class="ghost-action" type="button" data-travel-cancel hidden>取消编辑</button>
+            <button class="danger-action" type="button" data-travel-delete-entry hidden>删除</button>
+            </div>
+            <datalist id="travelPlaceOptions"></datalist>
+          </form>
+
+          <div class="map-board china-map-board" aria-label="中国旅行地图">
+            <img class="china-map-image" src="assets/china-map.svg" alt="高清中国省级地图">
+            <svg class="china-map-svg" viewBox="0 0 1000 720" role="img" aria-label="中国地图" style="display: none;">
+              <defs>
+                <filter id="mapShadow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="20" stdDeviation="16" flood-color="#0f3a55" flood-opacity="0.16"></feDropShadow>
+                </filter>
+              </defs>
+              <text class="china-map-title" x="56" y="72">中国地图</text>
+              <g class="china-provinces" filter="url(#mapShadow)">
+                <path class="province tone-1" d="M86 229 136 174 220 139 298 167 322 239 287 309 198 324 118 292Z"></path>
+                <path class="province tone-2" d="M220 139 281 92 365 116 379 185 322 239 298 167Z"></path>
+                <path class="province tone-3" d="M365 116 453 99 516 136 494 203 411 207 379 185Z"></path>
+                <path class="province tone-4" d="M516 136 595 116 681 144 666 212 572 224 494 203Z"></path>
+                <path class="province tone-2" d="M681 144 779 121 880 154 906 222 834 266 747 235 666 212Z"></path>
+                <path class="province tone-5" d="M747 235 834 266 854 332 795 371 724 336 701 281Z"></path>
+                <path class="province tone-1" d="M572 224 666 212 701 281 654 337 569 317 533 265Z"></path>
+                <path class="province tone-3" d="M411 207 494 203 533 265 486 326 395 311 360 249Z"></path>
+                <path class="province tone-4" d="M287 309 322 239 360 249 395 311 362 385 273 379 198 324Z"></path>
+                <path class="province tone-5" d="M486 326 533 265 569 317 545 392 459 401 418 356Z"></path>
+                <path class="province tone-2" d="M654 337 701 281 724 336 795 371 782 440 704 448 641 400Z"></path>
+                <path class="province tone-4" d="M273 379 362 385 418 356 459 401 418 478 315 491 235 452Z"></path>
+                <path class="province tone-1" d="M459 401 545 392 591 454 552 528 461 519 418 478Z"></path>
+                <path class="province tone-3" d="M591 454 641 400 704 448 689 519 610 543 552 528Z"></path>
+                <path class="province tone-5" d="M704 448 782 440 824 493 786 558 705 565 689 519Z"></path>
+                <path class="province tone-2" d="M315 491 418 478 461 519 422 594 327 603 272 552Z"></path>
+                <path class="province tone-4" d="M461 519 552 528 610 543 584 621 496 633 422 594Z"></path>
+                <path class="province tone-1" d="M584 621 610 543 705 565 720 637 652 671Z"></path>
+                <path class="province tone-3" d="M720 637 705 565 786 558 830 612 805 668Z"></path>
+                <path class="province tone-5 island-main" d="M757 520c32 17 48 45 41 75-29 13-62 4-80-20 3-27 15-46 39-55Z"></path>
+                <path class="province tone-2 island-small" d="M858 598c16 8 23 22 19 38-16 7-35 2-44-12 4-14 12-22 25-26Z"></path>
+                <path class="province tone-1 island-dot" d="M883 545c8 3 12 9 10 17-8 3-17 1-22-6 2-7 6-10 12-11Z"></path>
+              </g>
+              <g class="province-lines" aria-hidden="true">
+                <path d="M322 239 411 207 494 203 572 224 666 212"></path>
+                <path d="M273 379 362 385 459 401 545 392 641 400 704 448"></path>
+                <path d="M418 478 461 519 552 528 610 543 705 565"></path>
+                <path d="M533 265 569 317 654 337 724 336 795 371"></path>
+              </g>
+              <g class="map-labels" aria-hidden="true">
+                <text x="705" y="238">北京</text>
+                <text x="628" y="330">山东</text>
+                <text x="558" y="386">河南</text>
+                <text x="482" y="471">四川</text>
+                <text x="584" y="523">湖南</text>
+                <text x="722" y="505">浙江</text>
+                <text x="652" y="616">广东</text>
+                <text x="773" y="616">台湾</text>
+                <text x="206" y="248">新疆维吾尔自治区</text>
+                <text x="325" y="552">西藏自治区</text>
+              </g>
+            </svg>
+            <div class="china-province-labels" id="chinaProvinceLabels" aria-hidden="true"></div>
+            <div class="china-map-markers" id="chinaMapMarkers"></div>
+          </div>
+        </div>
+
+        <aside class="travel-memory-panel" aria-label="旅行地点记录">
+          <div class="travel-stats">
+            <div><strong id="travelVisitedCount">0</strong><span>来过</span></div>
+            <div><strong id="travelWishlistCount">0</strong><span>想去</span></div>
+            <div><strong id="travelNextCount">0</strong><span>下一站</span></div>
+          </div>
+          <div class="travel-entry-list" id="travelEntryList"></div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Made for <span id="footerNameA">D</span> & <span id="footerNameB">T</span></p>
+  </footer>
+
+  <script src="assets/china-city-index.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

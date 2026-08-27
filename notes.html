@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="theme-color" content="#fff9f5">
+  <meta name="format-detection" content="telephone=no">
+  <title>D & T | 碎碎念</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="page-prep" data-page="notes">
+  <canvas id="skyCanvas" aria-hidden="true"></canvas>
+
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="情侣主页">D & T</a>
+    <nav class="site-nav" aria-label="页面导航">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="story.html" data-nav="story">故事</a>
+      <a href="daily.html" data-nav="daily">日常</a>
+      <a href="notes.html" data-nav="notes">碎碎念</a>
+      <a href="travel.html" data-nav="travel">旅行地图</a>
+      <a href="album.html" data-nav="album">相册</a>
+      <a href="wishes.html" data-nav="wishes">愿望</a>
+      <button class="logout-button" type="button" data-logout>退出</button>
+    </nav>
+  </header>
+
+  <main class="page-main">
+    <section class="page-hero">
+      <p class="eyebrow">Little Words</p>
+      <h1>碎碎念</h1>
+      <p data-edit-key="notes.hero.text">不用很正式，想到什么就写什么；被惦记的瞬间，本来就值得收藏。</p>
+    </section>
+
+    <section class="section notes-section">
+      <form class="content-compose" data-content-form="notes">
+        <div class="content-compose-head">
+          <strong>新增碎碎念</strong>
+          <p data-content-message role="status"></p>
+        </div>
+        <div class="content-compose-fields">
+          <label class="content-compose-wide">
+            <span>内容</span>
+            <textarea name="text" rows="3" maxlength="500" placeholder="写下此刻想说的话"></textarea>
+          </label>
+          <label class="content-compose-wide" data-edit-time-field hidden>
+            <span>编辑时间</span>
+            <input name="updatedAt" type="datetime-local">
+          </label>
+          <div class="content-compose-actions">
+            <button type="submit">新增碎碎念</button>
+            <button class="ghost-action" type="button" data-content-cancel hidden>取消编辑</button>
+            <button class="danger-action" type="button" data-content-delete-entry hidden>删除</button>
+          </div>
+        </div>
+      </form>
+      <div class="notes-grid content-entry-list" data-content-list="notes"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Made for <span id="footerNameA">D</span> & <span id="footerNameB">T</span></p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

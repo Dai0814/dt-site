@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="theme-color" content="#fff9f5">
+  <meta name="format-detection" content="telephone=no">
+  <title>D & T | 愿望清单</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="page-prep" data-page="wishes">
+  <canvas id="skyCanvas" aria-hidden="true"></canvas>
+
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="情侣主页">D & T</a>
+    <nav class="site-nav" aria-label="页面导航">
+      <a href="index.html" data-nav="home">首页</a>
+      <a href="story.html" data-nav="story">故事</a>
+      <a href="daily.html" data-nav="daily">日常</a>
+      <a href="notes.html" data-nav="notes">碎碎念</a>
+      <a href="travel.html" data-nav="travel">旅行地图</a>
+      <a href="album.html" data-nav="album">相册</a>
+      <a href="wishes.html" data-nav="wishes">愿望</a>
+      <button class="logout-button" type="button" data-logout>退出</button>
+    </nav>
+  </header>
+
+  <main class="page-main">
+    <section class="page-hero">
+      <p class="eyebrow">Wish List</p>
+      <h1>愿望清单</h1>
+      <p data-edit-key="wishes.hero.text">想去的地方、想看的电影、想一起完成的小事，都放在这里。</p>
+    </section>
+
+    <section class="section wishes-section">
+      <div class="wish-layout">
+        <form class="wish-form" id="wishForm">
+          <input id="wishInput" type="text" maxlength="28" placeholder="写下一个约定" autocomplete="off">
+          <button type="submit">新增愿望</button>
+        </form>
+        <ul class="wish-list" id="wishList"></ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Made for <span id="footerNameA">D</span> & <span id="footerNameB">T</span></p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
