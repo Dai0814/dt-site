@@ -1,5 +1,6 @@
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from email.utils import formatdate, parsedate_to_datetime
 import json
 import os
 import secrets
@@ -12,10 +13,18 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT / "data"
 STATE_FILE = DATA_DIR / "site-state.json"
+UPLOAD_DIR = ROOT / "assets" / "uploads"
 HOST = "0.0.0.0"
-PORT = 5500
+PORT = int(os.environ.get("PORT", "5500"))
 MAX_BODY_BYTES = 30 * 1024 * 1024
+MAX_IMAGE_BYTES = 8 * 1024 * 1024
 EDITOR_TOKENS = set()
+IMAGE_CONTENT_TYPES = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+}
 
 DEFAULT_STATE = {
     "nameA": "D",
@@ -60,6 +69,7 @@ DEFAULT_STATE = {
         },
     ],
     "contentEntries": {"story": [], "daily": [], "notes": [], "storyTimeline": []},
+    "capsules": [],
     "edits": {},
     "editTimes": {},
     "updatedAt": "",
@@ -86,6 +96,8 @@ def normalize_state(raw):
         state["editTimes"] = {}
     if not isinstance(state.get("contentEntries"), dict):
         state["contentEntries"] = DEFAULT_STATE["contentEntries"]
+    if not isinstance(state.get("capsules"), list):
+        state["capsules"] = []
 
     state["photos"] = (state["photos"] + ["", "", ""])[:3]
     for key in ("story", "daily", "notes", "storyTimeline"):
@@ -129,6 +141,45 @@ def write_state(state):
             os.remove(temp_name)
 
     return state
+
+
+def state_updated_at_ms(state):
+    try:
+        return int(state.get("updatedAt") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def state_etag(state, authorized):
+    updated_at = state_updated_at_ms(state)
+    if not updated_at:
+        return ""
+    mode = "editor" if authorized else "viewer"
+    return f'W/"state-{updated_at}-{mode}"'
+
+
+def state_last_modified(state):
+    updated_at = state_updated_at_ms(state)
+    if not updated_at:
+        return ""
+    return formatdate(updated_at / 1000, usegmt=True)
+
+
+def request_is_not_modified(headers, etag, last_modified):
+    if_none_match = headers.get("If-None-Match", "")
+    if if_none_match:
+        return etag and any(tag.strip() == etag for tag in if_none_match.split(","))
+
+    if_modified_since = headers.get("If-Modified-Since", "")
+    if not if_modified_since or not last_modified:
+        return False
+
+    try:
+        since = parsedate_to_datetime(if_modified_since)
+        modified = parsedate_to_datetime(last_modified)
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return False
+    return since >= modified
 
 
 def geocode_place(path):
@@ -186,11 +237,27 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.startswith("/api/state"):
+            authorized = self.is_editor_authorized()
             state = read_state()
-            if not self.is_editor_authorized():
+            etag = state_etag(state, authorized)
+            last_modified = state_last_modified(state)
+            if request_is_not_modified(self.headers, etag, last_modified):
+                self.send_response(304)
+                if etag:
+                    self.send_header("ETag", etag)
+                if last_modified:
+                    self.send_header("Last-Modified", last_modified)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+
+            if not authorized:
                 state.pop("accessCode", None)
             state.pop("editCode", None)
-            self.send_json(state)
+            self.send_json(state, headers={
+                "ETag": etag,
+                "Last-Modified": last_modified,
+            })
             return
         if self.path.startswith("/data/"):
             self.send_error(404)
@@ -210,6 +277,10 @@ class Handler(SimpleHTTPRequestHandler):
 
         if self.path.startswith("/api/auth"):
             self.authenticate_editor()
+            return
+
+        if self.path.startswith("/api/images"):
+            self.upload_image()
             return
 
         if not self.path.startswith("/api/state"):
@@ -232,7 +303,11 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(400, "Invalid JSON")
             return
 
-        self.send_json(write_state(payload))
+        state = write_state(payload)
+        self.send_json(state, headers={
+            "ETag": state_etag(state, True),
+            "Last-Modified": state_last_modified(state),
+        })
 
     def is_editor_authorized(self):
         token = self.headers.get("X-Edit-Token", "")
@@ -278,10 +353,49 @@ class Handler(SimpleHTTPRequestHandler):
 
         self.send_json({"ok": True})
 
-    def send_json(self, payload, status=200):
+    def upload_image(self):
+        if not self.is_editor_authorized():
+            self.send_json({"ok": False, "error": "editor authorization required"}, status=401)
+            return
+
+        content_type = self.headers.get("Content-Type", "").split(";")[0].strip().lower()
+        extension = IMAGE_CONTENT_TYPES.get(content_type)
+        if not extension:
+            self.send_json({"ok": False, "error": "unsupported image type"}, status=415)
+            return
+
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length <= 0:
+            self.send_error(400, "Image is empty")
+            return
+        if length > MAX_IMAGE_BYTES:
+            self.send_error(413, "Image is too large")
+            return
+
+        data = self.rfile.read(length)
+        if len(data) != length:
+            self.send_error(400, "Invalid image body")
+            return
+
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        name = f"{int(time.time() * 1000)}-{secrets.token_urlsafe(8)}.{extension}"
+        target = UPLOAD_DIR / name
+        with target.open("wb") as file:
+            file.write(data)
+
+        self.send_json({
+            "ok": True,
+            "src": f"assets/uploads/{name}",
+            "bytes": len(data),
+        })
+
+    def send_json(self, payload, status=200, headers=None):
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        for key, value in (headers or {}).items():
+            if value:
+                self.send_header(key, value)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -289,6 +403,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     DATA_DIR.mkdir(exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"Serving D&T site on http://127.0.0.1:{PORT}/")
     server.serve_forever()

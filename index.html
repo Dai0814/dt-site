@@ -6,23 +6,31 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="theme-color" content="#fff9f5">
   <meta name="format-detection" content="telephone=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="D & T">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="msapplication-TileColor" content="#fff9f5">
+  <meta name="msapplication-TileImage" content="assets/pwa-icon-180.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/pwa-icon-180.png">
   <title>D & T</title>
   <link rel="stylesheet" href="styles.css">
 </head>
-<body class="page-prep" data-page="home">
+  <body class="page-prep" data-page="home">
   <canvas id="skyCanvas" aria-hidden="true"></canvas>
-  <audio id="homeMusic" src="assets/home-bgm.mp3" autoplay loop preload="auto"></audio>
+  <audio id="homeMusic" src="assets/home-bgm-96.mp3" loop preload="metadata"></audio>
 
   <header class="site-header">
     <a class="brand" href="index.html" aria-label="情侣主页">D & T</a>
     <nav class="site-nav" aria-label="页面导航">
       <a href="index.html" data-nav="home">首页</a>
       <a href="story.html" data-nav="story">故事</a>
-      <a href="daily.html" data-nav="daily">日常</a>
       <a href="notes.html" data-nav="notes">碎碎念</a>
-      <a href="travel.html" data-nav="travel">旅行地图</a>
       <a href="album.html" data-nav="album">相册</a>
+      <a href="travel.html" data-nav="travel">旅行地图</a>
       <a href="wishes.html" data-nav="wishes">愿望</a>
+      <a href="daily.html" data-nav="capsules">时间胶囊</a>
       <button class="logout-button" type="button" data-logout>退出</button>
     </nav>
   </header>
@@ -50,10 +58,29 @@
         </div>
       </div>
 
-      <button class="love-line-card" id="loveLineCard" type="button" aria-label="切换情话">
-        <span class="love-line-label">今日情话 · 点击换一句</span>
+      <button class="love-line-card" id="loveLineCard" type="button" aria-label="点这里试试看">
+        <span class="love-line-label">点这里试试看</span>
         <span class="love-line-text" id="loveLineText">有你在的每个瞬间，我都想说好幸福。</span>
       </button>
+    </section>
+
+    <section class="section today-memory-section" aria-labelledby="todayMemoryTitle">
+      <div class="today-memory-shell">
+        <div class="today-memory-head">
+          <div>
+            <p class="eyebrow">Memory Replay</p>
+            <h2 id="todayMemoryTitle">那年今日</h2>
+            <p id="todayMemoryDate">自动回看往年今天的故事、日常和碎碎念。</p>
+          </div>
+          <span id="todayMemoryCount" class="today-memory-count">0 条回忆</span>
+        </div>
+        <a class="today-memory-feature" id="todayMemoryPrompt" href="story.html" hidden>
+          <span>今天的回声</span>
+          <strong>往年的今天，也有一段你们认真生活过的痕迹。</strong>
+          <em>点击回到那一天</em>
+        </a>
+        <div class="today-memory-list" id="todayMemoryList" aria-live="polite"></div>
+      </div>
     </section>
 
     <section class="section gateway-section" aria-label="分页面入口">
@@ -67,30 +94,30 @@
           <h3 data-edit-key="home.card.story.title">故事</h3>
           <p data-edit-key="home.card.story.text">用时间线记录从心动到现在的每一个重要片段。</p>
         </a>
-        <a class="gateway-card daily-card" href="daily.html">
-          <span>02</span>
-          <h3 data-edit-key="home.card.daily.title">日常</h3>
-          <p data-edit-key="home.card.daily.text">记录每天的小事，早餐、散步、聊天和那些不起眼的开心。</p>
-        </a>
         <a class="gateway-card notes-card" href="notes.html">
-          <span>03</span>
+          <span>02</span>
           <h3 data-edit-key="home.card.notes.title">碎碎念</h3>
           <p data-edit-key="home.card.notes.text">存放那些突然想说的话，短短一句也算认真想你。</p>
+        </a>
+        <a class="gateway-card album-card" href="album.html">
+          <span>03</span>
+          <h3 data-edit-key="home.card.album.title">相册</h3>
+          <p data-edit-key="home.card.album.text">上传你们自己的照片，让页面变成专属回忆册。</p>
         </a>
         <a class="gateway-card travel-card" href="travel.html">
           <span>04</span>
           <h3 data-edit-key="home.card.travel.title">旅行地图</h3>
           <p data-edit-key="home.card.travel.text">标记一起去过和想去的地方，把世界慢慢走成回忆。</p>
         </a>
-        <a class="gateway-card album-card" href="album.html">
-          <span>05</span>
-          <h3 data-edit-key="home.card.album.title">相册</h3>
-          <p data-edit-key="home.card.album.text">上传你们自己的照片，让页面变成专属回忆册。</p>
-        </a>
         <a class="gateway-card wishes-card" href="wishes.html">
-          <span>06</span>
+          <span>05</span>
           <h3 data-edit-key="home.card.wishes.title">愿望</h3>
           <p data-edit-key="home.card.wishes.text">把想一起完成的事写下来，一件一件打勾。</p>
+        </a>
+        <a class="gateway-card daily-card" href="daily.html">
+          <span>06</span>
+          <h3 data-edit-key="home.card.daily.title">时间胶囊</h3>
+          <p data-edit-key="home.card.daily.text">写给未来 TA 的信，在设定的时刻准时解锁。</p>
         </a>
       </div>
     </section>
@@ -122,6 +149,8 @@
           <input id="loginCodeSetting" type="password" maxlength="16" autocomplete="new-password" value="20260526">
         </label>
         <button type="submit">保存设定</button>
+        <button class="ghost-action" type="button" data-copy-guest-link>复制访客链接</button>
+        <button class="ghost-action" type="button" data-export-state>导出网站数据</button>
       </form>
     </section>
   </main>

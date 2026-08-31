@@ -72,7 +72,6 @@
 
     .login-panel {
       width: 100%;
-      min-width: 0;
       max-width: 440px;
       margin: auto;
       padding: 28px;
@@ -180,8 +179,6 @@
 
     .nav {
       display: flex;
-      min-width: 0;
-      max-width: 100%;
       gap: 10px;
       overflow-x: auto;
       padding-bottom: 2px;
@@ -229,7 +226,6 @@
 
     .hero {
       display: grid;
-      min-width: 0;
       gap: 22px;
       padding: 18px 0 28px;
     }
@@ -292,7 +288,6 @@
 
     .card {
       position: relative;
-      min-width: 0;
       min-height: 190px;
       padding: 22px;
       overflow: hidden;
@@ -412,6 +407,18 @@
       display: grid;
     }
 
+    body.mobile-edit-disabled [data-edit-auth],
+    body.mobile-edit-disabled .settings-form,
+    body.mobile-edit-disabled .add-panel,
+    body.mobile-edit-disabled .module-edit,
+    body.mobile-edit-disabled .module-delete,
+    body.mobile-edit-disabled .module-position,
+    body.mobile-edit-disabled .photo-position-button,
+    body.mobile-edit-disabled .wish-form,
+    body.mobile-edit-disabled .editor {
+      display: none !important;
+    }
+
     .add-head {
       display: flex;
       align-items: center;
@@ -443,6 +450,47 @@
 
     .custom-list {
       margin-top: 14px;
+    }
+
+    .memory-filter {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.74);
+      border: 1px solid rgba(255, 255, 255, 0.86);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .memory-filter label {
+      display: grid;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 0.86rem;
+      font-weight: 800;
+    }
+
+    .memory-filter input,
+    .memory-filter select {
+      min-height: 44px;
+    }
+
+    .memory-filter button {
+      color: var(--ink);
+      background: rgba(23, 33, 43, 0.07);
+    }
+
+    .memory-filter button[hidden] {
+      display: none;
+    }
+
+    .memory-filter p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 700;
     }
 
     .dynamic-photo-card {
@@ -717,6 +765,14 @@
     body:not(.edit-unlocked) .wish-list .remove { display: none; }
     .wish-list li.done .wish-text { color: var(--muted); text-decoration: line-through; }
     .wish-meta { display: block; margin-top: 3px; color: var(--muted); font-size: 0.72rem; text-decoration: none; }
+    body.guest-mode [data-edit-auth],
+    body.guest-mode [data-logout],
+    body.guest-mode .settings-form,
+    body.guest-mode .add-panel,
+    body.guest-mode .module-edit,
+    body.guest-mode .editor {
+      display: none !important;
+    }
 
     .map {
       position: relative;
@@ -822,29 +878,92 @@
     }
 
     @media (max-width: 759px) {
-      .login-screen,
-      .login-panel,
-      .screen,
-      .page,
-      main,
-      .hero,
-      .time-panel,
-      .card,
-      .settings-form,
-      .wish-layout,
-      .add-panel,
-      .add-fields {
+      :root {
+        --mobile-tabbar-h: 76px;
+      }
+
+      .site-header {
+        position: sticky;
+        top: 0;
+        z-index: 60;
+        display: flex;
+        justify-content: center;
+        min-height: 54px;
+        padding: 10px 16px;
+      }
+
+      .brand {
+        line-height: 1;
+      }
+
+      .nav {
+        position: fixed;
+        right: max(10px, env(safe-area-inset-right));
+        bottom: max(10px, env(safe-area-inset-bottom));
+        left: max(10px, env(safe-area-inset-left));
+        z-index: 70;
+        display: grid;
+        grid-template-columns: repeat(9, minmax(0, 1fr));
+        gap: 3px;
+        padding: 6px;
+        overflow: visible;
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid rgba(23, 33, 43, 0.1);
+        border-radius: 8px;
+        box-shadow: 0 18px 46px rgba(23, 33, 43, 0.18);
+        backdrop-filter: blur(18px);
+      }
+
+      .nav button {
+        display: grid;
         min-width: 0;
-        max-width: 100%;
+        min-height: 54px;
+        place-items: center;
+        align-content: center;
+        gap: 4px;
+        padding: 5px 1px;
+        overflow: hidden;
+        background: transparent;
+        font-size: 0.62rem;
+        font-weight: 800;
+        line-height: 1.12;
+        white-space: normal;
+        word-break: keep-all;
       }
 
-      .login-panel {
-        width: 100%;
+      .nav button::before {
+        display: block;
+        width: 6px;
+        height: 6px;
+        content: "";
+        background: currentColor;
+        border-radius: 999px;
+        opacity: 0.62;
       }
 
-      .hero h1 {
-        font-size: clamp(3.4rem, 20vw, 4.6rem);
-        overflow-wrap: anywhere;
+      .nav button.active,
+      .nav button.edit-unlocked {
+        color: var(--ink);
+        background: rgba(43, 179, 163, 0.1);
+      }
+
+      .nav button.active::before,
+      .nav button.edit-unlocked::before {
+        width: 18px;
+        background: linear-gradient(90deg, var(--rose), var(--teal));
+        opacity: 1;
+      }
+
+      body.guest-mode .nav {
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+      }
+
+      main {
+        padding-bottom: calc(var(--mobile-tabbar-h) + 34px + env(safe-area-inset-bottom));
+      }
+
+      .editor {
+        bottom: calc(var(--mobile-tabbar-h) + 20px + env(safe-area-inset-bottom));
       }
     }
   </style>
@@ -883,7 +1002,7 @@
     </header>
 
     <main>
-      <audio id="homeMusic" src="assets/home-bgm.mp3" autoplay loop preload="auto"></audio>
+      <audio id="homeMusic" src="assets/home-bgm-96.mp3" loop preload="metadata"></audio>
       <section class="page active" id="home" data-page-view="home">
         <div class="hero">
           <div>
@@ -932,9 +1051,9 @@
         <form class="add-panel" data-add-form="story">
           <div class="add-head"><strong>新增故事</strong><small class="add-message" data-add-message></small></div>
           <div class="add-fields">
-          <label><span>时间</span><input name="time" type="date" aria-label="选择故事日期"></label>
+            <label><span>时间</span><input name="time" type="text" maxlength="32" placeholder="比如：第一次见面"></label>
             <label><span>标题</span><input name="title" type="text" maxlength="48" placeholder="写一个标题"></label>
-            <label><span>内容</span><textarea name="text" rows="3" maxlength="1000" placeholder="写下这个片段"></textarea></label>
+            <label><span>内容</span><textarea name="text" rows="3" maxlength="260" placeholder="写下这个片段"></textarea></label>
             <div class="add-actions">
               <button type="submit">新增故事</button>
               <button class="ghost-button" type="button" data-add-cancel hidden>取消编辑</button>
@@ -947,17 +1066,12 @@
       <section class="page" id="daily" data-page-view="daily">
         <h2 class="section-title">日常</h2>
         <p class="hero-copy" data-edit="daily.hero">真正珍贵的不是大事，是每一天都有人惦记、有人分享。</p>
-        <div class="grid">
-          <article class="card"><span data-edit="daily.1.label">Morning</span><h3 data-edit="daily.1.title">一起醒来的早晨</h3><p data-edit="daily.1.text">一句早安，一杯热饮，把今天变得柔软一点。</p></article>
-          <article class="card"><span data-edit="daily.2.label">Chat</span><h3 data-edit="daily.2.title">随手分享的小事</h3><p data-edit="daily.2.text">路上的云、听到的歌、突然想到的话，都想第一个告诉你。</p></article>
-          <article class="card"><span data-edit="daily.3.label">Night</span><h3 data-edit="daily.3.title">睡前的晚安</h3><p data-edit="daily.3.text">今天也辛苦了，明天也要继续在彼此身边。</p></article>
-        </div>
         <form class="add-panel" data-add-form="daily">
           <div class="add-head"><strong>新增日常</strong><small class="add-message" data-add-message></small></div>
           <div class="add-fields">
             <label><span>标签</span><input name="label" type="text" maxlength="24" placeholder="比如：Morning / Chat"></label>
             <label><span>标题</span><input name="title" type="text" maxlength="48" placeholder="写一个标题"></label>
-            <label><span>内容</span><textarea name="text" rows="3" maxlength="500" placeholder="写下今天的小事"></textarea></label>
+            <label><span>内容</span><textarea name="text" rows="3" maxlength="240" placeholder="写下今天的小事"></textarea></label>
             <div class="add-actions">
               <button type="submit">新增日常</button>
               <button class="ghost-button" type="button" data-add-cancel hidden>取消编辑</button>
@@ -979,7 +1093,7 @@
           <div class="add-head"><strong>新增碎碎念</strong><small class="add-message" data-add-message></small></div>
           <div class="add-fields">
             <label><span>时间</span><input name="time" type="text" maxlength="32" placeholder="比如：今天 / 睡前"></label>
-            <label><span>内容</span><textarea name="text" rows="3" maxlength="500" placeholder="写下此刻想说的话"></textarea></label>
+            <label><span>内容</span><textarea name="text" rows="3" maxlength="240" placeholder="写下此刻想说的话"></textarea></label>
             <div class="add-actions">
               <button type="submit">新增碎碎念</button>
               <button class="ghost-button" type="button" data-add-cancel hidden>取消编辑</button>
@@ -1006,7 +1120,7 @@
           <div class="add-fields">
             <label><span>状态</span><input name="label" type="text" maxlength="24" placeholder="比如：已去 / 想去 / 下一站"></label>
             <label><span>地点</span><input name="title" type="text" maxlength="48" placeholder="写一个地点"></label>
-            <label><span>记录</span><textarea name="text" rows="3" maxlength="500" placeholder="写下这段旅行"></textarea></label>
+            <label><span>记录</span><textarea name="text" rows="3" maxlength="260" placeholder="写下这段旅行"></textarea></label>
             <div class="add-actions">
               <button type="submit">新增旅行</button>
               <button class="ghost-button" type="button" data-add-cancel hidden>取消编辑</button>
@@ -1028,7 +1142,7 @@
           <div class="add-head"><strong>新增照片</strong><small class="add-message" data-add-message></small></div>
           <div class="add-fields">
             <label><span>照片标题</span><input name="caption" type="text" maxlength="48" placeholder="比如：某个晴天"></label>
-            <label><span>内容</span><textarea name="content" rows="3" maxlength="500" placeholder="写下这张照片里的故事"></textarea></label>
+            <label><span>内容</span><textarea name="content" rows="3" maxlength="220" placeholder="写下这张照片里的故事"></textarea></label>
             <label><span>上传照片</span><input name="photo" type="file" accept="image/*"></label>
             <div class="add-actions">
               <button type="submit">新增照片</button>
@@ -1069,7 +1183,10 @@
 
   <script>
     const defaults = {
+      nameA: "D",
+      nameB: "T",
       code: "20260526",
+      accessCode: "20260526",
       editCode: "20260610",
       startDate: "2026-05-26",
       startTime: "23:29:00",
@@ -1092,7 +1209,12 @@
         notes: [],
         travel: [],
         album: []
-      }
+      },
+      contentEntries: { story: [], daily: [], notes: [], storyTimeline: [] },
+      travelEntries: [],
+      photoEntries: [],
+      capsules: [],
+      updatedAt: ""
     };
     const addConfig = {
       story: {
@@ -1123,9 +1245,25 @@
     };
     let memoryAuth = false;
     let memoryEditAuth = false;
+    let memoryGuestAuth = false;
     let memorySite = null;
+    const entryFilterState = {
+      story: { query: "", month: "" },
+      notes: { query: "", month: "" },
+      album: { query: "", month: "" }
+    };
+    const mobileStorageKey = "dt-mobile-site";
+    const apiStateUrl = "/api/state";
+    const apiAuthUrl = "/api/auth";
+    const apiLoginUrl = "/api/login";
+    const staticStateUrl = "data/site-state.json";
+    const editTokenKey = "dt-mobile-edit-token";
+    const mobileEditingEnabled = true;
     const state = load();
     const editDefaults = {};
+    let sharedStateSnapshot = {};
+    let pendingSave = Promise.resolve();
+    let lastRefreshAt = 0;
     let activeModule = null;
 
     const loginScreen = document.querySelector("#loginScreen");
@@ -1141,7 +1279,10 @@
 
     init();
 
-    function init() {
+    async function init() {
+      document.body.classList.toggle("mobile-edit-disabled", !mobileEditingEnabled);
+      initGuestMode();
+      await loadSharedState();
       applyEdits();
       initLogin();
       initNav();
@@ -1149,6 +1290,7 @@
       initSettings();
       keepAddControlsAtBottom();
       initAddForms();
+      initEntryFilters();
       renderCustomItems();
       initModuleButtons();
       initEditor();
@@ -1156,13 +1298,18 @@
       initPhotos();
       updateEditAccess();
       setInterval(updateTimer, 1000);
+      setInterval(() => refreshSharedState(), 120000);
+      window.addEventListener("focus", () => refreshSharedState());
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) refreshSharedState();
+      });
       if (getAuth()) showApp();
     }
 
     function load() {
       const fallback = memorySite || {};
       try {
-        return normalizeState({ ...defaults, ...JSON.parse(localStorage.getItem("dt-mobile-site") || "{}") });
+        return normalizeState({ ...defaults, ...JSON.parse(localStorage.getItem(mobileStorageKey) || "{}") });
       } catch {
         return normalizeState({ ...defaults, ...fallback });
       }
@@ -1170,13 +1317,34 @@
 
     function normalizeState(value) {
       const next = value && typeof value === "object" ? value : {};
+      const customSource = next.customItems || mobileCustomItemsFromSharedState(next);
       return {
         ...defaults,
         ...next,
+        code: String(next.code || next.accessCode || defaults.code),
+        accessCode: String(next.accessCode || next.code || defaults.accessCode),
+        editCode: String(next.editCode || defaults.editCode),
         wishes: Array.isArray(next.wishes) ? next.wishes : defaults.wishes,
         photos: Array.isArray(next.photos) ? next.photos.concat(defaults.photos).slice(0, 3) : defaults.photos,
         photoPositions: normalizePhotoPositions(next.photoPositions),
-        customItems: normalizeCustomItems(next.customItems)
+        contentEntries: normalizeContentEntries(next.contentEntries),
+        travelEntries: Array.isArray(next.travelEntries) ? next.travelEntries : defaults.travelEntries,
+        photoEntries: Array.isArray(next.photoEntries) ? next.photoEntries : defaults.photoEntries,
+        capsules: Array.isArray(next.capsules) ? next.capsules : defaults.capsules,
+        edits: next.edits && typeof next.edits === "object" ? next.edits : {},
+        editTimes: next.editTimes && typeof next.editTimes === "object" ? next.editTimes : {},
+        customItems: normalizeCustomItems(customSource),
+        updatedAt: String(next.updatedAt || "")
+      };
+    }
+
+    function normalizeContentEntries(value) {
+      const source = value && typeof value === "object" ? value : {};
+      return {
+        story: Array.isArray(source.story) ? source.story : [],
+        daily: Array.isArray(source.daily) ? source.daily : [],
+        notes: Array.isArray(source.notes) ? source.notes : [],
+        storyTimeline: Array.isArray(source.storyTimeline) ? source.storyTimeline : []
       };
     }
 
@@ -1223,19 +1391,221 @@
         item.position = normalizePhotoPosition(entry.position);
         return item.photo ? item : null;
       }
+      if (type === "travel") {
+        item.status = normalizeTravelStatus(entry.status || entry.label);
+        item.photo = String(entry.photo || "");
+        item.position = normalizePhotoPosition(entry.position);
+        item.x = Number.isFinite(Number(entry.x)) ? Number(entry.x) : 50;
+        item.y = Number.isFinite(Number(entry.y)) ? Number(entry.y) : 50;
+        item.visitDate = String(entry.visitDate || "");
+      }
       return item.text || item.title ? item : null;
     }
 
     function save() {
+      pendingSave = pendingSave.then(() => persistState()).catch(() => persistState());
+      return pendingSave;
+    }
+
+    async function persistState() {
+      state.updatedAt = String(Date.now());
+      writeLocalState();
+      if (!getEditAuth() || getGuestAuth()) return;
+
+      const token = getEditToken();
+      if (!token) return;
+
+      try {
+        const response = await fetch(apiStateUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Edit-Token": token
+          },
+          body: JSON.stringify(buildSharedStatePayload())
+        });
+        if (response.status === 401) {
+          setEditAuth(false);
+          alert("编辑登录已过期，请重新输入编辑暗号。");
+          return;
+        }
+        if (!response.ok) throw new Error("state save failed");
+        mergeSharedState(await response.json());
+      } catch {
+        document.body.classList.add("offline-state");
+      }
+    }
+
+    function writeLocalState() {
       memorySite = JSON.parse(JSON.stringify(state));
       try {
-        localStorage.setItem("dt-mobile-site", JSON.stringify(state));
+        localStorage.setItem(mobileStorageKey, JSON.stringify(state));
       } catch {
         // Some mobile browsers block storage for local HTML files.
       }
     }
 
+    async function loadSharedState() {
+      const token = getEditToken();
+      const remoteState = await fetchSharedState(apiStateUrl, token) || await fetchSharedState(staticStateUrl, token);
+      if (!remoteState) {
+        document.body.classList.add("offline-state");
+        return false;
+      }
+
+      mergeSharedState(remoteState);
+      document.body.classList.remove("offline-state");
+      return true;
+    }
+
+    async function refreshSharedState(options = {}) {
+      if (!getAuth()) return;
+      if (!options.force && (getEditAuth() || editor.classList.contains("open"))) return;
+      if (!options.force && Date.now() - lastRefreshAt < 15000) return;
+      lastRefreshAt = Date.now();
+      if (await loadSharedState()) renderSyncedState();
+    }
+
+    async function fetchSharedState(url, token = "") {
+      try {
+        const response = await fetch(url, {
+          cache: "no-store",
+          headers: token ? { "X-Edit-Token": token } : {}
+        });
+        if (!response.ok) return null;
+        return await response.json();
+      } catch {
+        return null;
+      }
+    }
+
+    function mergeSharedState(shared) {
+      sharedStateSnapshot = JSON.parse(JSON.stringify(shared || {}));
+      const mobileState = normalizeState({ ...defaults, ...mobileStateFromSharedState(sharedStateSnapshot) });
+      Object.assign(state, mobileState);
+      writeLocalState();
+    }
+
+    function mobileStateFromSharedState(shared) {
+      const source = shared && typeof shared === "object" ? shared : {};
+      return {
+        ...source,
+        code: source.accessCode || source.code || defaults.code,
+        customItems: mobileCustomItemsFromSharedState(source)
+      };
+    }
+
+    function mobileCustomItemsFromSharedState(shared) {
+      const source = shared && typeof shared === "object" ? shared : {};
+      const content = source.contentEntries && typeof source.contentEntries === "object" ? source.contentEntries : {};
+      return {
+        story: Array.isArray(content.story) ? content.story : [],
+        daily: Array.isArray(content.daily) ? content.daily : [],
+        notes: Array.isArray(content.notes) ? content.notes : [],
+        travel: Array.isArray(source.travelEntries) ? source.travelEntries.map(sharedTravelToMobile).filter(Boolean) : [],
+        album: Array.isArray(source.photoEntries) ? source.photoEntries : []
+      };
+    }
+
+    function buildSharedStatePayload() {
+      const contentEntries = {
+        ...(sharedStateSnapshot.contentEntries || {}),
+        story: (state.customItems.story || []).map((entry) => ({ ...entry })),
+        daily: (state.customItems.daily || []).map((entry) => ({ ...entry })),
+        notes: (state.customItems.notes || []).map((entry) => ({ ...entry }))
+      };
+
+      return {
+        ...sharedStateSnapshot,
+        nameA: state.nameA || sharedStateSnapshot.nameA || defaults.nameA,
+        nameB: state.nameB || sharedStateSnapshot.nameB || defaults.nameB,
+        accessCode: state.accessCode || state.code || sharedStateSnapshot.accessCode || defaults.accessCode,
+        startDate: state.startDate || defaults.startDate,
+        startTime: state.startTime || defaults.startTime,
+        wishes: Array.isArray(state.wishes) ? state.wishes : [],
+        photos: Array.isArray(state.photos) ? state.photos.concat(defaults.photos).slice(0, 3) : defaults.photos,
+        photoPositions: normalizePhotoPositions(state.photoPositions),
+        contentEntries,
+        travelEntries: (state.customItems.travel || []).map(mobileTravelToShared).filter(Boolean),
+        photoEntries: (state.customItems.album || []).map((entry) => ({
+          ...entry,
+          position: normalizePhotoPosition(entry.position)
+        })),
+        capsules: Array.isArray(state.capsules) ? state.capsules : (sharedStateSnapshot.capsules || []),
+        edits: state.edits && typeof state.edits === "object" ? state.edits : {},
+        editTimes: state.editTimes && typeof state.editTimes === "object" ? state.editTimes : {},
+        updatedAt: state.updatedAt || String(Date.now())
+      };
+    }
+
+    function sharedTravelToMobile(entry) {
+      if (!entry || typeof entry !== "object") return null;
+      const place = String(entry.place || entry.title || "").trim();
+      const note = String(entry.note || entry.text || "").trim();
+      if (!place && !note) return null;
+      const status = normalizeTravelStatus(entry.status || entry.label);
+      return {
+        id: String(entry.id || `travel-${Date.now()}-${Math.random().toString(36).slice(2)}`),
+        label: travelStatusText(status),
+        title: place,
+        text: note,
+        status,
+        photo: String(entry.photo || ""),
+        position: normalizePhotoPosition(entry.position),
+        x: Number.isFinite(Number(entry.x)) ? Number(entry.x) : 50,
+        y: Number.isFinite(Number(entry.y)) ? Number(entry.y) : 50,
+        visitDate: String(entry.visitDate || ""),
+        updatedAt: entry.updatedAt || ""
+      };
+    }
+
+    function mobileTravelToShared(entry) {
+      if (!entry || typeof entry !== "object") return null;
+      const place = String(entry.title || entry.place || "").trim();
+      const note = String(entry.text || entry.note || "").trim();
+      if (!place && !note) return null;
+      return {
+        id: String(entry.id || `travel-${Date.now()}-${Math.random().toString(36).slice(2)}`),
+        place: place || addConfig.travel.defaults.title,
+        status: normalizeTravelStatus(entry.status || entry.label),
+        note,
+        photo: String(entry.photo || ""),
+        position: normalizePhotoPosition(entry.position),
+        x: Number.isFinite(Number(entry.x)) ? Math.max(4, Math.min(96, Number(entry.x))) : 50,
+        y: Number.isFinite(Number(entry.y)) ? Math.max(4, Math.min(96, Number(entry.y))) : 50,
+        visitDate: String(entry.visitDate || ""),
+        updatedAt: entry.updatedAt || ""
+      };
+    }
+
+    function normalizeTravelStatus(value) {
+      const status = String(value || "").trim().toLowerCase();
+      if (["visited", "wishlist", "next"].includes(status)) return status;
+      if (status.includes("visit")) return "visited";
+      if (status.includes("next")) return "next";
+      return "wishlist";
+    }
+
+    function travelStatusText(status) {
+      return {
+        visited: "\u5df2\u5230\u8fbe",
+        wishlist: "\u60f3\u53bb",
+        next: "\u4e0b\u4e00\u7ad9"
+      }[normalizeTravelStatus(status)] || "\u60f3\u53bb";
+    }
+
+    function renderSyncedState() {
+      applyEdits();
+      document.querySelector("#startDate").value = state.startDate || defaults.startDate;
+      document.querySelector("#startTime").value = state.startTime || defaults.startTime;
+      updateTimer();
+      renderCustomItems();
+      renderWishes();
+      renderFixedPhotos();
+    }
+
     function getAuth() {
+      if (getGuestAuth()) return true;
       try {
         return sessionStorage.getItem("dt-mobile-auth") === "yes";
       } catch {
@@ -1254,10 +1624,45 @@
       } catch {
         // Keep the in-memory value when browser storage is blocked.
       }
-      if (!value) setEditAuth(false);
+      if (!value) {
+        setEditAuth(false);
+        clearEditToken();
+      }
+    }
+
+    function getGuestAuth() {
+      try {
+        return sessionStorage.getItem("dt-mobile-guest") === "yes";
+      } catch {
+        return memoryGuestAuth;
+      }
+    }
+
+    function setGuestAuth(value) {
+      memoryGuestAuth = !!value;
+      try {
+        if (value) {
+          sessionStorage.setItem("dt-mobile-guest", "yes");
+        } else {
+          sessionStorage.removeItem("dt-mobile-guest");
+        }
+      } catch {
+        // Keep the in-memory value when browser storage is blocked.
+      }
+      if (value) setEditAuth(false);
+      updateEditAccess();
+    }
+
+    function initGuestMode() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("guest") !== "1" && params.get("mode") !== "guest") return;
+      setGuestAuth(true);
+      setAuth(true);
     }
 
     function getEditAuth() {
+      if (!mobileEditingEnabled) return false;
+      if (getGuestAuth()) return false;
       try {
         return sessionStorage.getItem("dt-mobile-edit-auth") === "yes";
       } catch {
@@ -1266,12 +1671,15 @@
     }
 
     function setEditAuth(value) {
+      if (!mobileEditingEnabled) value = false;
+      if (getGuestAuth()) value = false;
       memoryEditAuth = !!value;
       try {
         if (value) {
           sessionStorage.setItem("dt-mobile-edit-auth", "yes");
         } else {
           sessionStorage.removeItem("dt-mobile-edit-auth");
+          clearEditToken();
         }
       } catch {
         // Keep the in-memory value when browser storage is blocked.
@@ -1279,12 +1687,36 @@
       updateEditAccess();
     }
 
+    function getEditToken() {
+      try {
+        return sessionStorage.getItem(editTokenKey) || "";
+      } catch {
+        return "";
+      }
+    }
+
+    function setEditToken(token) {
+      try {
+        if (token) sessionStorage.setItem(editTokenKey, token);
+      } catch {
+        // Editing can still work locally when browser storage is blocked.
+      }
+    }
+
+    function clearEditToken() {
+      try {
+        sessionStorage.removeItem(editTokenKey);
+      } catch {
+        // Ignore storage failures.
+      }
+    }
+
     function initLogin() {
       const form = document.querySelector("#loginForm");
-      const submitLogin = (event) => {
+      const submitLogin = async (event) => {
         event.preventDefault();
         const code = document.querySelector("#loginCode").value.trim();
-        if (code !== defaults.code) {
+        if (!await verifyAccessCode(code)) {
           document.querySelector("#loginError").textContent = "暗号不对，再试一次。";
           return;
         }
@@ -1298,6 +1730,42 @@
       });
     }
 
+    async function verifyAccessCode(code) {
+      if (!code) return false;
+      try {
+        const response = await fetch(apiLoginUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code })
+        });
+        if (response.ok) return true;
+        if (response.status === 401) return false;
+      } catch {
+        // Static hosting has no login API, so fall back to the local code.
+      }
+      return code === String(state.accessCode || state.code || defaults.accessCode);
+    }
+
+    async function verifyEditCode(code) {
+      if (!code) return false;
+      try {
+        const response = await fetch(apiAuthUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code })
+        });
+        if (response.ok) {
+          const payload = await response.json();
+          if (payload?.token) setEditToken(payload.token);
+          return true;
+        }
+        if (response.status === 401) return false;
+      } catch {
+        // Static hosting has no editor API, so fall back to the local code.
+      }
+      return code === String(state.editCode || defaults.editCode);
+    }
+
     function showApp() {
       loginScreen.classList.remove("active");
       appScreen.classList.add("active");
@@ -1308,26 +1776,29 @@
       if (activePage === "home") bindHomeMusicRetry();
       updateEditAccess();
       updateTimer();
+      refreshSharedState({ force: true });
     }
 
-    function toggleEditAuth() {
+    async function toggleEditAuth() {
+      if (getGuestAuth()) return;
       if (getEditAuth()) {
         setEditAuth(false);
         closeEditor();
         return;
       }
-
       const code = prompt("请输入编辑暗号");
       if (code === null) return;
-      if (code.trim() === defaults.editCode) {
-        setEditAuth(true);
-      } else {
-        alert("编辑暗号不对。");
+      if (!await verifyEditCode(code.trim())) {
+        alert("编辑暗号不对，再试一次。");
+        return;
       }
+      setEditAuth(true);
+      await refreshSharedState({ force: true });
     }
 
     function updateEditAccess() {
       const unlocked = getEditAuth();
+      document.body.classList.toggle("guest-mode", getGuestAuth());
       document.body.classList.toggle("edit-unlocked", unlocked);
       document.querySelectorAll("[data-edit-auth]").forEach((button) => {
         button.classList.toggle("edit-unlocked", unlocked);
@@ -1346,6 +1817,7 @@
           return;
         }
         if (btn.hasAttribute("data-logout")) {
+          setGuestAuth(false);
           setAuth(false);
           appScreen.classList.remove("active");
           loginScreen.classList.add("active");
@@ -1376,7 +1848,7 @@
     function syncHomeMusic(page) {
       if (!homeMusic) return;
       homeMusic.loop = true;
-      homeMusic.preload = "auto";
+      homeMusic.preload = "metadata";
       if (page === "home") {
         const play = homeMusic.play();
         if (play && typeof play.catch === "function") play.catch(() => {});
@@ -1416,11 +1888,11 @@
     }
 
     function initSettings() {
-      document.querySelector("#settingsForm").addEventListener("submit", (event) => {
+      document.querySelector("#settingsForm").addEventListener("submit", async (event) => {
         event.preventDefault();
         state.startDate = document.querySelector("#startDate").value || defaults.startDate;
         state.startTime = document.querySelector("#startTime").value || defaults.startTime;
-        save();
+        await save();
         updateTimer();
       });
     }
@@ -1448,21 +1920,21 @@
 
     function initEditor() {
       document.querySelector("#editorClose").addEventListener("click", closeEditor);
-      document.querySelector("#editorReset").addEventListener("click", () => {
+      document.querySelector("#editorReset").addEventListener("click", async () => {
         if (!activeModule) return;
         getFields(activeModule).forEach((field) => delete state.edits[field.dataset.edit]);
         delete state.editTimes[getModuleId(activeModule)];
-        save();
+        await save();
         applyEdits();
         openEditor(activeModule);
       });
-      document.querySelector("#editorSave").addEventListener("click", () => {
+      document.querySelector("#editorSave").addEventListener("click", async () => {
         if (!activeModule) return;
         editorFields.querySelectorAll("[data-field]").forEach((textarea) => {
           state.edits[textarea.dataset.field] = sanitize(textarea.value.trim());
         });
         state.editTimes[getModuleId(activeModule)] = Date.now();
-        save();
+        await save();
         applyEdits();
         openEditor(activeModule);
       });
@@ -1514,6 +1986,54 @@
       });
     }
 
+    function initEntryFilters() {
+      [
+        { type: "story", listSelector: '[data-custom-list="story"]', placeholder: "搜索故事标题或内容" },
+        { type: "notes", listSelector: '[data-custom-list="notes"]', placeholder: "搜索碎碎念" },
+        { type: "album", listSelector: '[data-custom-list="album"]', placeholder: "搜索照片标题或内容" }
+      ].forEach((config) => {
+        const list = document.querySelector(config.listSelector);
+        if (!list || document.querySelector(`[data-entry-filter="${config.type}"]`)) return;
+
+        const filter = document.createElement("div");
+        filter.className = "memory-filter";
+        filter.dataset.entryFilter = config.type;
+        filter.innerHTML = `
+          <label>
+            <span>搜索</span>
+            <input type="search" data-entry-filter-search placeholder="${config.placeholder}" autocomplete="off">
+          </label>
+          <label>
+            <span>年月</span>
+            <select data-entry-filter-month>
+              <option value="">全部时间</option>
+            </select>
+          </label>
+          <button type="button" data-entry-filter-clear>清空</button>
+          <p data-entry-filter-status></p>
+        `;
+        list.insertAdjacentElement("beforebegin", filter);
+
+        const search = filter.querySelector("[data-entry-filter-search]");
+        const month = filter.querySelector("[data-entry-filter-month]");
+        const clear = filter.querySelector("[data-entry-filter-clear]");
+        search.addEventListener("input", () => {
+          entryFilterState[config.type].query = search.value.trim().toLowerCase();
+          renderCustomItems(config.type);
+        });
+        month.addEventListener("change", () => {
+          entryFilterState[config.type].month = month.value;
+          renderCustomItems(config.type);
+        });
+        clear.addEventListener("click", () => {
+          entryFilterState[config.type] = { query: "", month: "" };
+          search.value = "";
+          month.value = "";
+          renderCustomItems(config.type);
+        });
+      });
+    }
+
     function initAddForms() {
       document.querySelectorAll("[data-add-form]").forEach((form) => {
         const type = form.dataset.addForm;
@@ -1550,7 +2070,7 @@
           state.customItems[type] = entries;
           resetAddForm(type, form);
           renderCustomItems(type);
-          save();
+          await save();
           setAddMessage(form, editingId ? "已保存修改。" : "已新增。");
           if (hasNewPhoto && entry.photo) openCustomPhotoPositionEditor(entry.id);
         });
@@ -1586,8 +2106,6 @@
       config.fields.forEach((field) => {
         entry[field] = sanitize(String(form.elements[field]?.value || "").trim());
       });
-
-      if (type === "story" && !entry.time) entry.time = existing?.time || "";
 
       return entry.text || entry.title ? entry : null;
     }
@@ -1637,27 +2155,94 @@
         .sort((a, b) => b.time - a.time || a.index - b.index);
     }
 
-    function chronologicalStoryEntries(entries) {
-      return (Array.isArray(entries) ? entries : [])
-        .map((entry, index) => {
-          const date = new Date(`${String(entry?.time || "").trim()}T00:00:00`);
-          const time = date.getTime();
-          return {
-            entry,
-            index,
-            hasDate: !Number.isNaN(time),
-            time: Number.isNaN(time) ? Number(entry?.updatedAt) || getTimeFromId(entry?.id) : time
-          };
-        })
-        .sort((a, b) => {
-          if (a.hasDate !== b.hasDate) return a.hasDate ? -1 : 1;
-          return a.time - b.time || a.index - b.index;
-        });
-    }
-
     function getTimeFromId(id) {
       const match = String(id || "").match(/-(\d{11,})-/);
       return match ? Number(match[1]) : 0;
+    }
+
+    function parseFilterDate(value) {
+      if (!value) return null;
+      if (typeof value === "number" || /^\d{11,}$/.test(String(value))) {
+        const date = new Date(Number(value));
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+
+      const text = String(value).trim();
+      const match = text.match(/^(\d{4})(?:[-/.年]\s*)(\d{1,2})(?:[-/.月]\s*(\d{1,2}))?/);
+      if (match) {
+        const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3] || 1), 12);
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+
+      const date = new Date(text);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function getFilterMonth(type, entry) {
+      const date = type === "album"
+        ? parseFilterDate(entry.updatedAt)
+        : parseFilterDate(entry.time) || parseFilterDate(entry.updatedAt);
+      if (!date) return "";
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    }
+
+    function formatFilterMonth(value) {
+      const match = String(value || "").match(/^(\d{4})-(\d{2})$/);
+      if (!match) return value;
+      return `${match[1]}年${Number(match[2])}月`;
+    }
+
+    function getFilterText(type, entry) {
+      if (type === "album") return [entry.caption, entry.content].filter(Boolean).join(" ");
+      if (type === "story") return [entry.time, entry.title, entry.text].filter(Boolean).join(" ");
+      if (type === "notes") return [entry.time, entry.text].filter(Boolean).join(" ");
+      return "";
+    }
+
+    function getFilterState(type) {
+      return entryFilterState[type] || { query: "", month: "" };
+    }
+
+    function refreshFilterControl(type, entries) {
+      const filter = document.querySelector(`[data-entry-filter="${type}"]`);
+      if (!filter) return;
+      const search = filter.querySelector("[data-entry-filter-search]");
+      const month = filter.querySelector("[data-entry-filter-month]");
+      const current = getFilterState(type);
+      if (search && search.value !== current.query) search.value = current.query;
+      if (!month) return;
+
+      const months = [...new Set((entries || []).map((entry) => getFilterMonth(type, entry)).filter(Boolean))].sort((a, b) => b.localeCompare(a));
+      month.innerHTML = ["<option value=\"\">全部时间</option>"].concat(
+        months.map((value) => `<option value="${value}">${formatFilterMonth(value)}</option>`)
+      ).join("");
+      if (months.includes(current.month)) {
+        month.value = current.month;
+      } else {
+        current.month = "";
+        month.value = "";
+      }
+    }
+
+    function filterCustomEntries(type, entries) {
+      const current = getFilterState(type);
+      const query = current.query.trim().toLowerCase();
+      return (entries || []).filter((entry) => {
+        if (current.month && getFilterMonth(type, entry) !== current.month) return false;
+        if (!query) return true;
+        return getFilterText(type, entry).toLowerCase().includes(query);
+      });
+    }
+
+    function updateFilterStatus(type, visibleCount, totalCount) {
+      const filter = document.querySelector(`[data-entry-filter="${type}"]`);
+      if (!filter) return;
+      const status = filter.querySelector("[data-entry-filter-status]");
+      const clear = filter.querySelector("[data-entry-filter-clear]");
+      const current = getFilterState(type);
+      const active = Boolean(current.query || current.month);
+      if (clear) clear.hidden = !active;
+      if (status) status.textContent = active ? `已找到 ${visibleCount} / ${totalCount} 条` : `共 ${totalCount} 条`;
     }
 
     function renderCustomItems(targetType) {
@@ -1666,11 +2251,26 @@
         const list = document.querySelector(`[data-custom-list="${type}"]`);
         if (!list) return;
 
+        const sourceEntries = state.customItems[type] || [];
+        refreshFilterControl(type, sourceEntries);
+        const filteredEntries = filterCustomEntries(type, sourceEntries);
+        updateFilterStatus(type, filteredEntries.length, sourceEntries.length);
         list.innerHTML = "";
-        const entries = type === "story"
-          ? chronologicalStoryEntries(state.customItems[type])
-          : latestFirstEntries(state.customItems[type]);
-        entries.forEach(({ entry }) => {
+        if (!sourceEntries.length) {
+          const empty = document.createElement("p");
+          empty.className = "empty-list";
+          empty.textContent = type === "album" ? "还没有照片，先上传第一张吧。" : "还没有内容，先写下第一条吧。";
+          list.appendChild(empty);
+          return;
+        }
+        if (!filteredEntries.length) {
+          const empty = document.createElement("p");
+          empty.className = "empty-list";
+          empty.textContent = "没有找到匹配内容。";
+          list.appendChild(empty);
+          return;
+        }
+        latestFirstEntries(filteredEntries).forEach(({ entry }) => {
           list.appendChild(createCustomCard(type, entry));
         });
       });
@@ -1827,8 +2427,26 @@
       });
     }
 
+    function renderFixedPhotos() {
+      state.photos = Array.isArray(state.photos) ? state.photos.concat(["", "", ""]).slice(0, 3) : ["", "", ""];
+      document.querySelectorAll("[data-photo-preview]").forEach((img) => {
+        const index = Number(img.dataset.photoPreview);
+        const card = img.closest(".photo-card");
+        if (state.photos[index]) {
+          img.src = state.photos[index];
+          const position = normalizePhotoPosition(state.photoPositions[index]);
+          img.style.objectPosition = `${position.x}% ${position.y}%`;
+          card?.classList.add("has-image");
+        } else {
+          img.removeAttribute("src");
+          card?.classList.remove("has-image");
+        }
+      });
+    }
+
     function initPhotos() {
       state.photos = Array.isArray(state.photos) ? state.photos.concat(["", "", ""]).slice(0, 3) : ["", "", ""];
+      renderFixedPhotos();
       document.querySelectorAll("[data-photo-preview]").forEach((img) => {
         const index = Number(img.dataset.photoPreview);
         if (state.photos[index]) {

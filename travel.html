@@ -6,22 +6,31 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="theme-color" content="#fff9f5">
   <meta name="format-detection" content="telephone=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="D & T">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="msapplication-TileColor" content="#fff9f5">
+  <meta name="msapplication-TileImage" content="assets/pwa-icon-180.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/pwa-icon-180.png">
   <title>D & T | 旅行地图</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="page-prep" data-page="travel">
   <canvas id="skyCanvas" aria-hidden="true"></canvas>
+  <audio id="travelMusic" src="assets/travel-bgm-96.mp3" loop preload="metadata"></audio>
 
   <header class="site-header">
     <a class="brand" href="index.html" aria-label="情侣主页">D & T</a>
     <nav class="site-nav" aria-label="页面导航">
       <a href="index.html" data-nav="home">首页</a>
       <a href="story.html" data-nav="story">故事</a>
-      <a href="daily.html" data-nav="daily">日常</a>
       <a href="notes.html" data-nav="notes">碎碎念</a>
-      <a href="travel.html" data-nav="travel">旅行地图</a>
       <a href="album.html" data-nav="album">相册</a>
+      <a href="travel.html" data-nav="travel">旅行地图</a>
       <a href="wishes.html" data-nav="wishes">愿望</a>
+      <a href="daily.html" data-nav="capsules">时间胶囊</a>
       <button class="logout-button" type="button" data-logout>退出</button>
     </nav>
   </header>
@@ -34,18 +43,14 @@
     </section>
 
     <section class="section travel-section">
-      <div class="travel-intro-grid">
-        <article>
-          <span data-edit-key="travel.1.label">Visited</span>
-          <h3 data-edit-key="travel.1.title">一起走过的地方</h3>
-          <p data-edit-key="travel.1.text">把到达过的城市、街角、海边和车站都记录下来。</p>
-        </article>
-        <article>
-          <span data-edit-key="travel.2.label">Next</span>
-          <h3 data-edit-key="travel.2.title">下一次出发</h3>
-          <p data-edit-key="travel.2.text">选一个想去很久的地方，订下属于你们的下一站。</p>
-        </article>
-      </div>
+      <section class="travel-next-stop" aria-labelledby="travelNextTitle">
+        <div>
+          <p class="eyebrow">Next Stop</p>
+          <h2 id="travelNextTitle"><span id="travelNextPlace">下一次出发</span></h2>
+          <p id="travelNextNote">选一个想去很久的地方，订下属于你们的下一站。</p>
+        </div>
+        <span class="travel-next-badge" id="travelNextStatus">NEXT</span>
+      </section>
 
       <div class="travel-map-layout">
         <div class="travel-map-shell">
@@ -149,10 +154,12 @@
 
         <aside class="travel-memory-panel" aria-label="旅行地点记录">
           <div class="travel-stats">
-            <div><strong id="travelVisitedCount">0</strong><span>来过</span></div>
-            <div><strong id="travelWishlistCount">0</strong><span>想去</span></div>
-            <div><strong id="travelNextCount">0</strong><span>下一站</span></div>
+            <button type="button" class="is-active" data-travel-filter="all"><strong id="travelAllCount">0</strong><span>全部</span></button>
+            <button type="button" data-travel-filter="visited"><strong id="travelVisitedCount">0</strong><span>来过</span></button>
+            <button type="button" data-travel-filter="wishlist"><strong id="travelWishlistCount">0</strong><span>想去</span></button>
+            <button type="button" data-travel-filter="next"><strong id="travelNextCount">0</strong><span>下一站</span></button>
           </div>
+          <div class="travel-record-head"><h2>旅行记录</h2><p id="travelRecordCount"></p></div>
           <div class="travel-entry-list" id="travelEntryList"></div>
         </aside>
       </div>

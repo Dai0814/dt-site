@@ -1,2 +1,7 @@
 
 README.md
+__pycache__/
+.chrome-check*/
+.edge-horizontal-check/
+.workbuddy/
+mobile-check.png

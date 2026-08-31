@@ -6,22 +6,31 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="theme-color" content="#fff9f5">
   <meta name="format-detection" content="telephone=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="D & T">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="msapplication-TileColor" content="#fff9f5">
+  <meta name="msapplication-TileImage" content="assets/pwa-icon-180.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/pwa-icon-180.png">
   <title>D & T | 我们的故事</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="page-prep" data-page="story">
   <canvas id="skyCanvas" aria-hidden="true"></canvas>
+  <audio id="storyMusic" src="assets/story-bgm-96.mp3" loop preload="metadata"></audio>
 
   <header class="site-header">
     <a class="brand" href="index.html" aria-label="情侣主页">D & T</a>
     <nav class="site-nav" aria-label="页面导航">
       <a href="index.html" data-nav="home">首页</a>
       <a href="story.html" data-nav="story">故事</a>
-      <a href="daily.html" data-nav="daily">日常</a>
       <a href="notes.html" data-nav="notes">碎碎念</a>
-      <a href="travel.html" data-nav="travel">旅行地图</a>
       <a href="album.html" data-nav="album">相册</a>
+      <a href="travel.html" data-nav="travel">旅行地图</a>
       <a href="wishes.html" data-nav="wishes">愿望</a>
+      <a href="daily.html" data-nav="capsules">时间胶囊</a>
       <button class="logout-button" type="button" data-logout>退出</button>
     </nav>
   </header>
@@ -39,32 +48,56 @@
         <h2 id="milestoneTitle">重要时刻</h2>
         <p>用一条长轴，标记我们一起走过的关键节点。</p>
       </div>
-      <div class="story-timeline milestone-axis content-entry-list" data-content-list="storyTimeline" aria-live="polite"></div>
-      <form class="content-compose milestone-compose" data-content-form="storyTimeline">
-        <div class="content-compose-head">
-          <strong>添加重要时刻</strong>
-          <p data-content-message role="status"></p>
+      <div class="story-layout">
+        <div class="story-timeline-column">
+          <div class="story-timeline milestone-axis content-entry-list" data-content-list="storyTimeline" aria-live="polite"></div>
         </div>
-        <div class="content-compose-fields">
-          <label>
-            <span>日期</span>
-            <input name="eventDate" type="date" required>
-          </label>
-          <label>
-            <span>事件标题</span>
-            <input name="title" type="text" maxlength="48" placeholder="例如：正式在一起" required>
-          </label>
-          <label class="content-compose-wide">
-            <span>简短说明</span>
-            <textarea name="text" rows="2" maxlength="1000" placeholder="留下这个节点的意义"></textarea>
-          </label>
-          <div class="content-compose-actions">
-            <button type="submit">添加时刻</button>
-            <button class="ghost-action" type="button" data-content-cancel hidden>取消编辑</button>
-            <button class="danger-action" type="button" data-content-delete-entry hidden>删除</button>
-          </div>
-        </div>
-      </form>
+        <aside class="story-form-column">
+          <form class="content-compose milestone-compose" data-content-form="storyTimeline">
+            <div class="content-compose-head">
+              <strong>添加重要时刻</strong>
+              <p data-content-message role="status"></p>
+            </div>
+            <div class="content-compose-fields">
+              <label>
+                <span>日期</span>
+                <input name="eventDate" type="date" required>
+              </label>
+              <label>
+                <span>事件标题</span>
+                <input name="title" type="text" maxlength="48" placeholder="例如：正式在一起" required>
+              </label>
+              <label class="content-compose-wide">
+                <span>简短说明</span>
+                <textarea name="text" rows="2" maxlength="1000" placeholder="留下这个节点的意义"></textarea>
+              </label>
+              <div class="content-compose-image" data-image-upload>
+                <span>照片（可选）</span>
+                <input type="file" accept="image/*" data-image-input hidden>
+                <div class="content-compose-image-preview" data-image-preview></div>
+                <div class="content-compose-image-toolbar">
+                  <button class="image-select-btn" type="button" data-image-select>选择照片</button>
+                  <button class="image-position-btn" type="button" data-image-position hidden>调节展示范围</button>
+                  <label>
+                    <span>显示大小</span>
+                    <select data-image-size aria-label="照片显示大小">
+                      <option value="small">小</option>
+                      <option value="medium" selected>中</option>
+                      <option value="large">大</option>
+                    </select>
+                  </label>
+                  <button class="image-remove-btn" type="button" data-image-remove hidden>移除照片</button>
+                </div>
+              </div>
+              <div class="content-compose-actions">
+                <button type="submit">添加时刻</button>
+                <button class="ghost-action" type="button" data-content-cancel hidden>取消编辑</button>
+                <button class="danger-action" type="button" data-content-delete-entry hidden>删除</button>
+              </div>
+            </div>
+          </form>
+        </aside>
+      </div>
     </section>
 
     <section class="section story-records-section" aria-labelledby="storyRecordsTitle">
@@ -92,6 +125,24 @@
             <span>故事内容</span>
             <textarea name="text" rows="4" maxlength="1000" placeholder="写下这个片段"></textarea>
           </label>
+          <div class="content-compose-image" data-image-upload>
+            <span>故事照片（可选）</span>
+            <input type="file" accept="image/*" data-image-input hidden>
+            <div class="content-compose-image-preview" data-image-preview></div>
+            <div class="content-compose-image-toolbar">
+              <button class="image-select-btn" type="button" data-image-select>选择照片</button>
+              <button class="image-position-btn" type="button" data-image-position hidden>调节展示范围</button>
+              <label>
+                <span>显示大小</span>
+                <select data-image-size aria-label="故事照片显示大小">
+                  <option value="small">小</option>
+                  <option value="medium" selected>中</option>
+                  <option value="large">大</option>
+                </select>
+              </label>
+              <button class="image-remove-btn" type="button" data-image-remove hidden>移除照片</button>
+            </div>
+          </div>
           <div class="content-compose-actions">
             <button type="submit">添加故事</button>
             <button class="ghost-action" type="button" data-content-cancel hidden>取消编辑</button>

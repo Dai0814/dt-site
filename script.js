@@ -28,6 +28,7 @@ const defaults = {
     notes: [],
     storyTimeline: []
   },
+  capsules: [],
   edits: {},
   editTimes: {},
   updatedAt: ""
@@ -36,20 +37,42 @@ const defaults = {
 const storageKey = "couple-home-state";
 const authKey = "couple-home-auth";
 const editTokenKey = "couple-home-edit-token";
+const guestKey = "couple-home-guest";
+const capsuleDismissedKey = "couple-home-dismissed-capsules";
+const capsuleNotifiedKey = "couple-home-notified-capsules";
 const apiStateUrl = "/api/state";
 const apiLoginUrl = "/api/login";
 const apiAuthUrl = "/api/auth";
+const apiImagesUrl = "/api/images";
+const staticStateUrl = "data/site-state.json";
+const editorStateRefreshIntervalMs = 30000;
+const viewerStateRefreshIntervalMs = 120000;
+let staticStateMode = false;
 const page = document.body.dataset.page;
 const state = { ...defaults };
 const editableDefaults = {};
+let lastPersistedStateSignature = "";
+const entryFilterState = {
+  story: { query: "", month: "" },
+  notes: { query: "", month: "" },
+  album: { query: "", month: "" }
+};
 const editor = {
   activeScope: null,
   panel: null,
 };
 const homeMusic = document.querySelector("#homeMusic");
 const albumMusic = document.querySelector("#albumMusic");
+const storyMusic = document.querySelector("#storyMusic");
+const notesMusic = document.querySelector("#notesMusic");
+const travelMusic = document.querySelector("#travelMusic");
+const wishesMusic = document.querySelector("#wishesMusic");
 let editingTravelId = null;
 let draggingTravelId = null;
+let activeTravelFilter = "all";
+let capsuleUnlockTimer = 0;
+let focusedMemoryHash = "";
+let pendingStateSaveTimer = 0;
 const chinaPlaces = [
   { name: "\u5317\u4eac", x: 70, y: 45, aliases: ["beijing"] },
   { name: "\u5929\u6d25", x: 72, y: 47, aliases: ["tianjin"] },
@@ -190,9 +213,9 @@ const fallbackLoveLines = [
   "我想和你谈论天空、宇宙和缘分，只想和你"
 ];
 let loveLines = [...fallbackLoveLines];
-let loveLineIndex = -1;
-let loveLineOrder = [];
-let loveLineCursor = 0;
+const loveLineHistoryKey = "couple-home-love-line-history";
+let loveLineHistory = new Set();
+let currentLoveLine = "";
 let chinaAreaIndex = [];
 let chinaAreaIndexPromise = null;
 
@@ -208,6 +231,7 @@ const els = {
   minutes: document.querySelector("#minutesTogether"),
   seconds: document.querySelector("#secondsTogether"),
   settingsForm: document.querySelector("#settingsForm"),
+  copyGuestLink: document.querySelector("[data-copy-guest-link]"),
   nameA: document.querySelector("#nameA"),
   nameB: document.querySelector("#nameB"),
   startDate: document.querySelector("#startDate"),
@@ -232,6 +256,11 @@ const els = {
   travelVisitedCount: document.querySelector("#travelVisitedCount"),
   travelWishlistCount: document.querySelector("#travelWishlistCount"),
   travelNextCount: document.querySelector("#travelNextCount"),
+  travelAllCount: document.querySelector("#travelAllCount"),
+  travelNextPlace: document.querySelector("#travelNextPlace"),
+  travelNextNote: document.querySelector("#travelNextNote"),
+  travelNextStatus: document.querySelector("#travelNextStatus"),
+  travelRecordCount: document.querySelector("#travelRecordCount"),
   albumPhotoForm: document.querySelector("#albumPhotoForm"),
   albumPhotoCaption: document.querySelector("#albumPhotoCaption"),
   albumPhotoContent: document.querySelector("#albumPhotoContent"),
@@ -241,12 +270,17 @@ const els = {
   albumPhotoCount: document.querySelector("#albumPhotoCount"),
   albumPhotoOpen: document.querySelector("[data-album-photo-open]"),
   loveLineCard: document.querySelector("#loveLineCard"),
-  loveLineText: document.querySelector("#loveLineText")
+  loveLineText: document.querySelector("#loveLineText"),
+  todayMemoryDate: document.querySelector("#todayMemoryDate"),
+  todayMemoryCount: document.querySelector("#todayMemoryCount"),
+  todayMemoryPrompt: document.querySelector("#todayMemoryPrompt"),
+  todayMemoryList: document.querySelector("#todayMemoryList")
 };
 
 init();
 
 async function init() {
+  activateGuestModeFromUrl();
   collectEditableDefaults();
   await loadState();
   if (!guardPage()) return;
@@ -257,21 +291,61 @@ async function init() {
   initNavigation();
   keepAddControlsAtBottom();
   initForms();
+  initEntryFilters();
   initPhotos();
   initTravelMap();
   initInlineEditor();
   initHomeMusic();
+  initStoryMusic();
   initAlbumMusic();
+  initNotesMusic();
+  initTravelMusic();
+  initWishesMusic();
   initLoveLine();
   initCanvas();
   setInterval(updateTogetherTime, 1000);
-  setInterval(refreshStateFromServer, 2200);
+  setInterval(() => {
+    if (isEditorMode()) refreshStateFromServer();
+  }, editorStateRefreshIntervalMs);
+  setInterval(() => {
+    if (!isEditorMode()) refreshStateFromServer();
+  }, viewerStateRefreshIntervalMs);
+  setInterval(checkCapsuleUnlockAlerts, 60000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      flushScheduledStateSave();
+      return;
+    }
+    if (!document.hidden) {
+      refreshStateFromServer();
+      checkCapsuleUnlockAlerts();
+    }
+  });
+  window.addEventListener("pagehide", flushScheduledStateSave);
+  window.addEventListener("focus", () => {
+    refreshStateFromServer();
+    checkCapsuleUnlockAlerts();
+  });
+  syncHeaderHeight();
+  window.addEventListener("resize", syncHeaderHeight);
+  initPwaServiceWorker();
 }
 
 async function initLoveLine() {
   if (!els.loveLineCard || !els.loveLineText) return;
 
-  els.loveLineCard.addEventListener("click", () => showRandomLoveLine());
+  loveLineHistory = loadLoveLineHistory();
+  let lastTouchRotation = 0;
+  els.loveLineCard.addEventListener("pointerup", (event) => {
+    if (event.pointerType !== "touch") return;
+    event.preventDefault();
+    lastTouchRotation = Date.now();
+    showRandomLoveLine();
+  });
+  els.loveLineCard.addEventListener("click", () => {
+    if (Date.now() - lastTouchRotation < 600) return;
+    showRandomLoveLine();
+  });
   showRandomLoveLine();
 
   try {
@@ -282,9 +356,10 @@ async function initLoveLine() {
       .split(/\r?\n/)
       .map((line) => line.match(/^\s*-\s+(.+?)\s*$/)?.[1]?.trim())
       .filter(Boolean);
-    if (loaded.length >= 2) {
-      loveLines = loaded;
-      resetLoveLineOrder();
+    const uniqueLines = [...new Set(loaded)];
+    if (uniqueLines.length >= 2) {
+      loveLines = uniqueLines;
+      loveLineHistory = new Set([...loveLineHistory].filter((line) => loveLines.includes(line)));
       showRandomLoveLine();
     }
   } catch {
@@ -294,27 +369,38 @@ async function initLoveLine() {
 
 function showRandomLoveLine() {
   if (!loveLines.length || !els.loveLineText) return;
-  if (loveLineCursor >= loveLineOrder.length) resetLoveLineOrder();
-  const nextIndex = loveLineOrder[loveLineCursor++];
-  loveLineIndex = nextIndex;
+  let candidates = loveLines.filter((line) => !loveLineHistory.has(line));
+  if (!candidates.length) {
+    loveLineHistory.clear();
+    candidates = loveLines.filter((line) => line !== currentLoveLine);
+  }
+  if (!candidates.length) candidates = loveLines;
+
+  const nextLine = candidates[Math.floor(Math.random() * candidates.length)];
+  currentLoveLine = nextLine;
+  loveLineHistory.add(nextLine);
+  saveLoveLineHistory();
   els.loveLineCard?.classList.remove("is-changing");
   void els.loveLineCard?.offsetWidth;
-  els.loveLineText.textContent = loveLines[nextIndex];
+  els.loveLineText.textContent = nextLine;
   els.loveLineCard?.classList.add("is-changing");
 }
 
-function resetLoveLineOrder() {
-  loveLineOrder = loveLines.map((_, index) => index);
-  for (let index = loveLineOrder.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [loveLineOrder[index], loveLineOrder[swapIndex]] = [loveLineOrder[swapIndex], loveLineOrder[index]];
+function loadLoveLineHistory() {
+  try {
+    const value = JSON.parse(localStorage.getItem(loveLineHistoryKey) || "[]");
+    return new Set(Array.isArray(value) ? value.map((line) => String(line)) : []);
+  } catch {
+    return new Set();
   }
+}
 
-  // Avoid repeating the final line from the previous round.
-  if (loveLineOrder.length > 1 && loveLineOrder[0] === loveLineIndex) {
-    [loveLineOrder[0], loveLineOrder[1]] = [loveLineOrder[1], loveLineOrder[0]];
+function saveLoveLineHistory() {
+  try {
+    localStorage.setItem(loveLineHistoryKey, JSON.stringify([...loveLineHistory]));
+  } catch {
+    // The quote rotation still works when browser storage is unavailable.
   }
-  loveLineCursor = 0;
 }
 
 function normalizeState(value) {
@@ -325,12 +411,13 @@ function normalizeState(value) {
     accessCode: String(next.accessCode || next.loginCode || defaults.accessCode),
     startDate: !next.startDate || next.startDate === "2024-05-20" ? defaults.startDate : next.startDate,
     startTime: next.startTime || defaults.startTime,
-    wishes: Array.isArray(next.wishes) ? next.wishes : defaults.wishes,
+    wishes: Array.isArray(next.wishes) ? next.wishes.map(normalizeWish).filter(Boolean) : defaults.wishes,
     photos: Array.isArray(next.photos) ? next.photos.concat(defaults.photos).slice(0, 3) : defaults.photos,
     photoPositions: normalizePhotoPositions(next.photoPositions),
     photoEntries: Array.isArray(next.photoEntries) ? next.photoEntries.map(normalizePhotoEntry).filter(Boolean) : defaults.photoEntries,
     travelEntries: Array.isArray(next.travelEntries) ? next.travelEntries.map(normalizeTravelEntry).filter(Boolean) : defaults.travelEntries,
     contentEntries: normalizeContentEntries(next.contentEntries),
+    capsules: Array.isArray(next.capsules) ? next.capsules.map(normalizeCapsule).filter(Boolean) : defaults.capsules,
     edits: next.edits && typeof next.edits === "object" ? next.edits : {},
     editTimes: next.editTimes && typeof next.editTimes === "object" ? next.editTimes : {},
     updatedAt: String(next.updatedAt || "")
@@ -400,6 +487,38 @@ function normalizeContentEntry(type, entry, config = contentEntryConfig[type]) {
   return output;
 }
 
+function normalizeCapsule(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const title = String(entry.title || "").trim();
+  const text = String(entry.text || "").trim();
+  const unlockAt = Number(entry.unlockAt);
+  if (!title && !text) return null;
+  if (!Number.isFinite(unlockAt)) return null;
+  return {
+    id: String(entry.id || `capsule-${Date.now()}-${Math.random().toString(36).slice(2)}`),
+    title,
+    text,
+    unlockAt,
+    createdAt: Number(entry.createdAt) || Number(entry.updatedAt) || Date.now(),
+    updatedAt: Number(entry.updatedAt) || ""
+  };
+}
+
+function normalizeWish(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const text = String(entry.text || "").trim();
+  if (!text) return null;
+  const done = Boolean(entry.done);
+  const updatedAt = Number(entry.updatedAt) || "";
+  const doneAt = done ? (Number(entry.doneAt) || updatedAt || "") : "";
+  return {
+    text,
+    done,
+    doneAt,
+    updatedAt
+  };
+}
+
 function normalizePhotoEntry(entry) {
   if (!entry || typeof entry !== "object") return null;
   const caption = String(entry.caption || "").trim();
@@ -435,6 +554,33 @@ function clampPercent(value) {
   return Math.max(0, Math.min(100, number));
 }
 
+function getStateSyncSignature(value) {
+  const snapshot = normalizeState(value);
+  snapshot.updatedAt = "";
+  return JSON.stringify(snapshot);
+}
+
+function buildStateEtag(updatedAt, authorized) {
+  const version = String(updatedAt || "").trim();
+  if (!version) return "";
+  return `W/"state-${version}-${authorized ? "editor" : "viewer"}"`;
+}
+
+function formatHttpDate(updatedAt) {
+  const value = Number(updatedAt);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return new Date(value).toUTCString();
+}
+
+function buildStateRequestHeaders() {
+  const headers = { "X-Edit-Token": sessionStorage.getItem(editTokenKey) || "" };
+  const etag = buildStateEtag(state.updatedAt, isEditorMode());
+  const lastModified = formatHttpDate(state.updatedAt);
+  if (etag) headers["If-None-Match"] = etag;
+  if (lastModified) headers["If-Modified-Since"] = lastModified;
+  return headers;
+}
+
 async function loadState() {
   let saved = {};
   let savedRaw = "";
@@ -457,27 +603,93 @@ async function loadState() {
     const serverState = normalizeState(await response.json());
     if (!serverState.updatedAt && hasMeaningfulLocalState(localState, savedRaw)) {
       Object.assign(state, serverState, localState);
-      await saveState();
+      localStorage.setItem(storageKey, JSON.stringify(state));
+      if (canEdit()) await saveState();
       return;
     }
-    Object.assign(state, serverState);
+    const localIsNewer = hasMeaningfulLocalState(localState, savedRaw)
+      && Number(localState.updatedAt || 0) > Number(serverState.updatedAt || 0);
+    const mergedCapsules = mergeCapsules(localState.capsules, serverState.capsules);
+    if (localIsNewer) {
+      Object.assign(state, localState, { capsules: mergedCapsules });
+      localStorage.setItem(storageKey, JSON.stringify(state));
+      if (canEdit()) await saveState();
+      return;
+    }
+    Object.assign(state, serverState, { capsules: mergedCapsules });
     localStorage.setItem(storageKey, JSON.stringify(state));
+    lastPersistedStateSignature = getStateSyncSignature(state);
   } catch {
-    document.body.classList.add("offline-state");
+    // Netlify and other static hosts cannot run server.py. Load the last
+    // exported state file so a fresh deployment still renders saved entries.
+    try {
+      const response = await fetch(staticStateUrl, { cache: "no-store" });
+      if (!response.ok) throw new Error("static state request failed");
+      const staticState = normalizeState(await response.json());
+      const localIsNewer = hasMeaningfulLocalState(localState, savedRaw)
+        && Number(localState.updatedAt || 0) > Number(staticState.updatedAt || 0);
+      const mergedCapsules = mergeCapsules(localState.capsules, staticState.capsules);
+      Object.assign(state, localIsNewer ? localState : staticState, { capsules: mergedCapsules });
+      localStorage.setItem(storageKey, JSON.stringify(state));
+      lastPersistedStateSignature = getStateSyncSignature(state);
+      staticStateMode = true;
+      document.body.classList.remove("offline-state");
+    } catch {
+      document.body.classList.add("offline-state");
+    }
   }
 }
 
 function hasMeaningfulLocalState(localState, rawValue) {
   if (!rawValue) return false;
 
-  return ["nameA", "nameB", "accessCode", "startDate", "startTime", "wishes", "photos", "photoPositions", "photoEntries", "travelEntries", "contentEntries", "edits"].some((key) => {
+  return ["nameA", "nameB", "accessCode", "startDate", "startTime", "wishes", "photos", "photoPositions", "photoEntries", "travelEntries", "contentEntries", "capsules", "edits"].some((key) => {
     return JSON.stringify(localState[key]) !== JSON.stringify(defaults[key]);
   });
 }
 
+function mergeCapsules(primary, fallback) {
+  const ordered = [];
+  const seen = new Set();
+  [primary, fallback].forEach((list) => {
+    (Array.isArray(list) ? list : []).forEach((entry) => {
+      if (!entry || typeof entry !== "object") return;
+      const id = String(entry.id || "");
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      ordered.push(entry);
+    });
+  });
+  return ordered;
+}
+
 async function saveState() {
-  Object.assign(state, normalizeState(state), { updatedAt: String(Date.now()) });
+  if (canEdit() && !staticStateMode) {
+    await moveInlineImagesToUploads(state);
+  }
+
+  const normalized = normalizeState(state);
+  const signature = getStateSyncSignature(normalized);
+  if (signature === lastPersistedStateSignature) {
+    Object.assign(state, normalized);
+    localStorage.setItem(storageKey, JSON.stringify(state));
+    return;
+  }
+
+  Object.assign(state, normalized);
+  if (!canEdit()) {
+    localStorage.setItem(storageKey, JSON.stringify(state));
+    return;
+  }
+
+  Object.assign(state, { updatedAt: String(Date.now()) });
   localStorage.setItem(storageKey, JSON.stringify(state));
+
+  if (staticStateMode) {
+    document.body.classList.remove("offline-state");
+    lastPersistedStateSignature = getStateSyncSignature(state);
+    return;
+  }
 
   try {
     const response = await fetch(apiStateUrl, {
@@ -491,28 +703,71 @@ async function saveState() {
     if (!response.ok) throw new Error("state save failed");
     Object.assign(state, normalizeState(await response.json()));
     localStorage.setItem(storageKey, JSON.stringify(state));
+    lastPersistedStateSignature = getStateSyncSignature(state);
     document.body.classList.remove("offline-state");
   } catch {
     document.body.classList.add("offline-state");
   }
 }
 
+function scheduleStateSave(delay = 180) {
+  if (!canEdit()) return;
+  if (pendingStateSaveTimer) {
+    window.clearTimeout(pendingStateSaveTimer);
+  }
+  pendingStateSaveTimer = window.setTimeout(() => {
+    pendingStateSaveTimer = 0;
+    saveState().catch(() => {});
+  }, delay);
+}
+
+function flushScheduledStateSave() {
+  if (!pendingStateSaveTimer) return;
+  window.clearTimeout(pendingStateSaveTimer);
+  pendingStateSaveTimer = 0;
+  saveState().catch(() => {});
+}
+
+function exportStateFile() {
+  const exported = {
+    ...normalizeState(state),
+    updatedAt: String(Date.now())
+  };
+  const blob = new Blob([JSON.stringify(exported, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "site-state.json";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 async function refreshStateFromServer() {
-  if (document.body.dataset.page === "login" && document.hidden) return;
+  if (staticStateMode) return;
+  if (document.hidden) return;
   if (draggingTravelId) return;
 
   try {
     const response = await fetch(apiStateUrl, {
       cache: "no-store",
-      headers: { "X-Edit-Token": sessionStorage.getItem(editTokenKey) || "" }
+      headers: buildStateRequestHeaders()
     });
+    if (response.status === 304) {
+      document.body.classList.remove("offline-state");
+      return;
+    }
     if (!response.ok) throw new Error("state refresh failed");
     const incoming = normalizeState(await response.json());
     if (incoming.updatedAt && incoming.updatedAt !== state.updatedAt) {
       Object.assign(state, incoming);
       localStorage.setItem(storageKey, JSON.stringify(state));
+      lastPersistedStateSignature = getStateSyncSignature(state);
       applyAllState();
       syncOpenEditor();
+    } else {
+      lastPersistedStateSignature = getStateSyncSignature(state);
     }
     document.body.classList.remove("offline-state");
   } catch {
@@ -526,10 +781,16 @@ function applyAllState() {
   updateTogetherTime();
   renderWishes();
   renderContentEntries();
+  renderCapsules();
   renderTravelMap();
   refreshSettingsForm();
   refreshPhotos();
   renderPhotoEntries();
+  renderTodayMemories();
+  refreshEntryFilters();
+  checkCapsuleUnlockAlerts();
+  scheduleNextCapsuleUnlockAlert();
+  window.requestAnimationFrame(focusDeepLinkedMemory);
 }
 
 function navigateWithTransition(url, direction = -1) {
@@ -540,23 +801,54 @@ function navigateWithTransition(url, direction = -1) {
   }, 230);
 }
 
+function focusDeepLinkedMemory() {
+  if (!window.location.hash) return;
+  const rawHash = window.location.hash.slice(1);
+  const hash = decodeURIComponent(rawHash);
+  if (!hash || focusedMemoryHash === hash) return;
+  const target = document.getElementById(hash);
+  if (!target) return;
+
+  focusedMemoryHash = hash;
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  target.classList.add("is-memory-focused");
+  window.setTimeout(() => {
+    target.classList.remove("is-memory-focused");
+  }, 1800);
+}
+
 function isLoggedIn() {
-  return sessionStorage.getItem(authKey) === "yes";
+  return isGuestMode() || sessionStorage.getItem(authKey) === "yes";
 }
 
 function isEditorMode() {
-  return isLoggedIn() && Boolean(sessionStorage.getItem(editTokenKey));
+  return !isGuestMode() && isLoggedIn() && Boolean(sessionStorage.getItem(editTokenKey));
 }
 
 function canEdit() {
   return isEditorMode();
 }
 
+function isGuestMode() {
+  return sessionStorage.getItem(guestKey) === "yes";
+}
+
+function activateGuestModeFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("guest") !== "1" && params.get("mode") !== "guest") return;
+  sessionStorage.setItem(guestKey, "yes");
+  sessionStorage.setItem(authKey, "yes");
+  sessionStorage.removeItem(editTokenKey);
+}
+
 function setEditorMode(enabled) {
   if (enabled) {
     sessionStorage.setItem(authKey, "yes");
+    sessionStorage.removeItem(guestKey);
   } else closeEditor();
 
+  const guest = isGuestMode();
+  document.body.classList.toggle("guest-mode", guest);
   document.body.classList.toggle("editor-mode", enabled);
   document.body.classList.toggle("viewer-mode", !enabled);
   document.querySelectorAll("[data-logout]").forEach((button) => {
@@ -620,6 +912,215 @@ function latestFirstEntries(entries) {
     .sort((a, b) => b.time - a.time || a.index - b.index);
 }
 
+function renderTodayMemories() {
+  if (!els.todayMemoryList) return;
+
+  const today = new Date();
+  const memories = getTodayMemories(today);
+  const featured = getFeaturedTodayMemory(memories);
+  const dateText = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" }).format(today);
+  if (els.todayMemoryDate) {
+    els.todayMemoryDate.textContent = `\u4eca\u5929\u662f ${dateText}\uff0c\u81ea\u52a8\u56de\u770b\u5f80\u5e74\u4eca\u5929\u7684\u6545\u4e8b\u3001\u76f8\u518c\u3001\u65c5\u884c\u548c\u788e\u788e\u5ff5\u3002`;
+  }
+  if (els.todayMemoryCount) {
+    els.todayMemoryCount.textContent = `${memories.length} \u6761\u56de\u5fc6`;
+  }
+  renderTodayMemoryPrompt(featured, dateText);
+
+  els.todayMemoryList.innerHTML = "";
+  if (!memories.length) {
+    const empty = document.createElement("p");
+    empty.className = "today-memory-empty";
+    empty.textContent = "\u5f80\u5e74\u4eca\u5929\u8fd8\u6ca1\u6709\u7559\u4e0b\u8bb0\u5f55\uff0c\u7b49\u65f6\u95f4\u518d\u5411\u524d\u8d70\u4e00\u70b9\uff0c\u8fd9\u91cc\u5c31\u4f1a\u81ea\u52a8\u4eae\u8d77\u6765\u3002";
+    els.todayMemoryList.appendChild(empty);
+    return;
+  }
+
+  memories.forEach((memory) => {
+    const card = document.createElement(memory.href ? "a" : "article");
+    card.className = `today-memory-card is-${memory.type}`;
+    if (memory.href) {
+      card.href = memory.href;
+      card.setAttribute("aria-label", `\u53bb\u770b${memory.label}\uff1a${memory.title}`);
+    }
+    const imageHtml = memory.image
+      ? `<img src="${escapeAttribute(memory.image)}" alt="" style="object-position: ${memory.imagePosition.x}% ${memory.imagePosition.y}%;">`
+      : "";
+    card.innerHTML = `
+      <div class="today-memory-meta">
+        <span>${escapeHtml(memory.label)}</span>
+        <time>${escapeHtml(formatMemoryDate(memory.date))}</time>
+      </div>
+      ${imageHtml}
+      <h3>${escapeHtml(memory.title)}</h3>
+      <p>${escapeHtml(memory.text)}</p>
+      ${memory.href ? `<span class="today-memory-link">\u53bb\u770b\u770b</span>` : ""}
+    `;
+    els.todayMemoryList.appendChild(card);
+  });
+}
+
+function renderTodayMemoryPrompt(memory, dateText) {
+  if (!els.todayMemoryPrompt) return;
+  if (!memory) {
+    els.todayMemoryPrompt.hidden = false;
+    els.todayMemoryPrompt.removeAttribute("href");
+    els.todayMemoryPrompt.classList.add("is-empty");
+    els.todayMemoryPrompt.querySelector("span").textContent = "\u4eca\u5929\u8fd8\u5728\u7b49\u5f85";
+    els.todayMemoryPrompt.querySelector("strong").textContent = `${dateText} \u8fd8\u6ca1\u6709\u5f80\u5e74\u7684\u8bb0\u5f55\uff0c\u7b49\u4eca\u5929\u88ab\u8bb0\u5f55\u4e0b\u6765\uff0c\u660e\u5e74\u7684\u8fd9\u91cc\u5c31\u4f1a\u4eae\u8d77\u6765\u3002`;
+    els.todayMemoryPrompt.querySelector("em").textContent = "\u5148\u53bb\u5199\u4e00\u6761\u65b0\u7684\u56de\u5fc6";
+    return;
+  }
+
+  els.todayMemoryPrompt.hidden = false;
+  els.todayMemoryPrompt.href = memory.href || "#";
+  els.todayMemoryPrompt.classList.remove("is-empty");
+  els.todayMemoryPrompt.querySelector("span").textContent = `${memory.ageText}\u7684\u4eca\u5929`;
+  els.todayMemoryPrompt.querySelector("strong").textContent = createTodayMemorySentence(memory);
+  els.todayMemoryPrompt.querySelector("em").textContent = `\u53bb${memory.label}\u91cc\u770b\u770b`;
+}
+
+function getFeaturedTodayMemory(memories) {
+  return [...memories].sort((a, b) => {
+    const imageScore = Number(Boolean(b.image)) - Number(Boolean(a.image));
+    if (imageScore) return imageScore;
+    return b.text.length - a.text.length || b.date.getTime() - a.date.getTime();
+  })[0] || null;
+}
+
+function createTodayMemorySentence(memory) {
+  const subject = memory.type === "notes"
+    ? "\u4f60\u4eec\u7559\u4e0b\u4e86\u4e00\u53e5\u5f88\u60f3\u5ff5\u7684\u8bdd"
+    : memory.type === "album"
+      ? "\u4f60\u4eec\u628a\u8fd9\u4e00\u523b\u5b58\u8fdb\u4e86\u7167\u7247\u5899"
+      : memory.type === "travel"
+        ? "\u4f60\u4eec\u628a\u4e00\u4e2a\u5730\u65b9\u5199\u8fdb\u4e86\u5730\u56fe"
+        : "\u4f60\u4eec\u8ba4\u771f\u8bb0\u4e0b\u4e86\u4e00\u4e2a\u7247\u6bb5";
+  return `${memory.ageText}\u7684\u4eca\u5929\uff0c${subject}\uff1a${memory.title}`;
+}
+
+function getTodayMemories(today = new Date()) {
+  const todayKey = getMonthDayKey(today);
+  const currentYear = today.getFullYear();
+  const configs = [
+    {
+      type: "story",
+      label: "\u6545\u4e8b",
+      href: "story.html",
+      getEntries: () => state.contentEntries.story || [],
+      getDate: (entry) => parseMemoryDate(entry.time) || parseMemoryDate(entry.updatedAt),
+      getTitle: (entry) => entry.title || "\u90a3\u5929\u7684\u6545\u4e8b",
+      getText: (entry) => entry.text || ""
+    },
+    {
+      type: "storyTimeline",
+      label: "\u6545\u4e8b",
+      href: "story.html",
+      getEntries: () => state.contentEntries.storyTimeline || [],
+      getDate: (entry) => parseMemoryDate(entry.eventDate) || parseMemoryDate(entry.updatedAt),
+      getTitle: (entry) => entry.title || "\u90a3\u5929\u7684\u91cd\u8981\u65f6\u523b",
+      getText: (entry) => entry.text || ""
+    },
+    {
+      type: "notes",
+      label: "\u788e\u788e\u5ff5",
+      href: "notes.html",
+      getEntries: () => state.contentEntries.notes || [],
+      getDate: (entry) => parseMemoryDate(entry.time) || parseMemoryDate(entry.updatedAt),
+      getTitle: () => "\u90a3\u5929\u7684\u788e\u788e\u5ff5",
+      getText: (entry) => entry.text || ""
+    },
+    {
+      type: "album",
+      label: "\u76f8\u518c",
+      href: "album.html",
+      getEntries: () => state.photoEntries || [],
+      getDate: (entry) => parseMemoryDate(entry.updatedAt),
+      getTitle: (entry) => entry.caption || "\u90a3\u5929\u7684\u7167\u7247",
+      getText: (entry) => entry.content || "\u6709\u4e00\u5f20\u7167\u7247\uff0c\u66ff\u4f60\u4eec\u8bb0\u4f4f\u4e86\u90a3\u5929\u7684\u5149\u3002"
+    },
+    {
+      type: "travel",
+      label: "\u65c5\u884c\u5730\u56fe",
+      href: "travel.html",
+      getEntries: () => state.travelEntries || [],
+      getDate: (entry) => parseMemoryDate(entry.visitDate) || parseMemoryDate(entry.updatedAt),
+      getTitle: (entry) => entry.place || "\u90a3\u5929\u7684\u5730\u65b9",
+      getText: (entry) => entry.note || "\u4e00\u4e2a\u5730\u540d\uff0c\u4e00\u6bb5\u4f60\u4eec\u4e00\u8d77\u8d70\u8fc7\u7684\u8def\u3002"
+    }
+  ];
+
+  return configs
+    .flatMap((config) => {
+      return config.getEntries().map((entry, index) => {
+        const date = config.getDate(entry);
+        return { config, entry, index, date };
+      });
+    })
+    .filter(({ date }) => {
+      return date
+        && date.getFullYear() < currentYear
+        && getMonthDayKey(date) === todayKey;
+    })
+    .map(({ config, entry, index, date }) => ({
+      type: config.type,
+      label: config.label,
+      href: getTodayMemoryHref(config.href, entry),
+      date,
+      ageText: getMemoryAgeText(currentYear - date.getFullYear()),
+      index,
+      image: entry.image || entry.photo || "",
+      imagePosition: normalizePhotoPosition(entry.imagePosition || entry.position),
+      title: getPlainText(config.getTitle(entry), 36),
+      text: getPlainText(config.getText(entry), 110) || "\u8fd9\u4e00\u5929\u7684\u7ec6\u8282\uff0c\u90fd\u6536\u5728\u90a3\u65f6\u7684\u5fc3\u60c5\u91cc\u3002"
+    }))
+    .sort((a, b) => b.date.getTime() - a.date.getTime() || a.index - b.index);
+}
+
+function getTodayMemoryHref(pagePath, entry) {
+  if (!pagePath) return "";
+  return `${pagePath}#memory-${encodeURIComponent(entry.id)}`;
+}
+
+function getMemoryAgeText(years) {
+  if (years <= 1) return "\u53bb\u5e74";
+  return `${years}\u5e74\u524d`;
+}
+
+function parseMemoryDate(value) {
+  if (!value) return null;
+  if (typeof value === "number" || /^\d{11,}$/.test(String(value))) {
+    const date = new Date(Number(value));
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const text = String(value).trim();
+  const match = text.match(/^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})/);
+  if (match) {
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getMonthDayKey(date) {
+  return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function formatMemoryDate(value) {
+  return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long", day: "numeric" }).format(value);
+}
+
+function getPlainText(value, maxLength = 120) {
+  const template = document.createElement("template");
+  template.innerHTML = sanitizeEditableHtml(value);
+  const text = (template.content.textContent || "").replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength).trim()}\u2026`;
+}
+
 function getTimeFromId(id) {
   const match = String(id || "").match(/-(\d{11,})-/);
   return match ? Number(match[1]) : 0;
@@ -665,6 +1166,174 @@ function keepAddControlsAtBottom() {
   }
 }
 
+function initEntryFilters() {
+  [
+    { type: "story", listSelector: '[data-content-list="story"]', placeholder: "\u641c\u7d22\u6545\u4e8b\u6807\u9898\u6216\u5185\u5bb9" },
+    { type: "notes", listSelector: '[data-content-list="notes"]', placeholder: "\u641c\u7d22\u788e\u788e\u5ff5" },
+    { type: "album", listSelector: "#albumPhotoList", placeholder: "\u641c\u7d22\u7167\u7247\u6807\u9898\u6216\u5185\u5bb9" }
+  ].forEach((config) => {
+    const list = document.querySelector(config.listSelector);
+    if (!list || document.querySelector(`[data-entry-filter="${config.type}"]`)) return;
+
+    const filter = document.createElement("div");
+    filter.className = "memory-filter";
+    filter.dataset.entryFilter = config.type;
+    filter.innerHTML = `
+      <label class="memory-filter-search">
+        <span>\u641c\u7d22</span>
+        <input type="search" data-entry-filter-search placeholder="${escapeAttribute(config.placeholder)}" autocomplete="off">
+      </label>
+      <label class="memory-filter-month">
+        <span>\u5e74\u6708</span>
+        <select data-entry-filter-month aria-label="\u6309\u5e74\u6708\u7b5b\u9009">
+          <option value="">\u5168\u90e8\u65f6\u95f4</option>
+        </select>
+      </label>
+      <button type="button" data-entry-filter-clear>\u6e05\u7a7a</button>
+      <p data-entry-filter-status></p>
+    `;
+    list.insertAdjacentElement("beforebegin", filter);
+
+    const search = filter.querySelector("[data-entry-filter-search]");
+    const month = filter.querySelector("[data-entry-filter-month]");
+    const clear = filter.querySelector("[data-entry-filter-clear]");
+    search.addEventListener("input", () => {
+      entryFilterState[config.type].query = search.value.trim().toLowerCase();
+      renderFilteredEntryList(config.type);
+    });
+    month.addEventListener("change", () => {
+      entryFilterState[config.type].month = month.value;
+      renderFilteredEntryList(config.type);
+    });
+    clear.addEventListener("click", () => {
+      entryFilterState[config.type] = { query: "", month: "" };
+      search.value = "";
+      month.value = "";
+      renderFilteredEntryList(config.type);
+    });
+  });
+
+  renderContentEntries("story");
+  renderContentEntries("notes");
+  renderPhotoEntries();
+}
+
+function renderFilteredEntryList(type) {
+  if (type === "album") {
+    renderPhotoEntries();
+  } else {
+    renderContentEntries(type);
+  }
+}
+
+function refreshEntryFilters() {
+  ["story", "notes"].forEach((type) => refreshEntryFilter(type, state.contentEntries[type] || []));
+  refreshEntryFilter("album", state.photoEntries || []);
+}
+
+function refreshEntryFilter(type, entries) {
+  const filter = document.querySelector(`[data-entry-filter="${type}"]`);
+  if (!filter) return;
+  const search = filter.querySelector("[data-entry-filter-search]");
+  const month = filter.querySelector("[data-entry-filter-month]");
+  const current = entryFilterState[type] || { query: "", month: "" };
+  if (search && search.value !== current.query) search.value = current.query;
+  if (!month) return;
+
+  const months = getEntryFilterMonths(type, entries);
+  const options = [`<option value="">\u5168\u90e8\u65f6\u95f4</option>`].concat(months.map((value) => {
+    return `<option value="${escapeAttribute(value)}">${escapeHtml(formatEntryFilterMonth(value))}</option>`;
+  }));
+  month.innerHTML = options.join("");
+  if (months.includes(current.month)) {
+    month.value = current.month;
+  } else {
+    current.month = "";
+    month.value = "";
+  }
+}
+
+function updateEntryFilterStatus(type, visibleCount, totalCount) {
+  const filter = document.querySelector(`[data-entry-filter="${type}"]`);
+  if (!filter) return;
+  const current = entryFilterState[type] || { query: "", month: "" };
+  const active = Boolean(current.query || current.month);
+  filter.classList.toggle("is-filtering", active);
+  const status = filter.querySelector("[data-entry-filter-status]");
+  const clear = filter.querySelector("[data-entry-filter-clear]");
+  if (clear) clear.hidden = !active;
+  if (status) {
+    status.textContent = active
+      ? `\u5df2\u627e\u5230 ${visibleCount} / ${totalCount} \u6761`
+      : `\u5171 ${totalCount} \u6761`;
+  }
+}
+
+function filterEntries(type, entries) {
+  const current = entryFilterState[type] || { query: "", month: "" };
+  const query = current.query.trim().toLowerCase();
+  return (entries || []).filter((entry) => {
+    if (current.month && getEntryFilterMonth(type, entry) !== current.month) return false;
+    if (!query) return true;
+    return getEntrySearchText(type, entry).toLowerCase().includes(query);
+  });
+}
+
+function getEntrySearchText(type, entry) {
+  if (type === "album") {
+    return [entry.caption, entry.content].filter(Boolean).join(" ");
+  }
+  if (type === "story") {
+    return [entry.time, entry.title, entry.text].filter(Boolean).join(" ");
+  }
+  if (type === "notes") {
+    return [formatNoteEntryDate(entry), entry.text].filter(Boolean).join(" ");
+  }
+  return "";
+}
+
+function getEntryFilterMonths(type, entries) {
+  return [...new Set((entries || []).map((entry) => getEntryFilterMonth(type, entry)).filter(Boolean))]
+    .sort((a, b) => b.localeCompare(a));
+}
+
+function getEntryFilterMonth(type, entry) {
+  const date = getEntryFilterDate(type, entry);
+  if (!date) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getEntryFilterDate(type, entry) {
+  if (type === "album") return parseEntryFilterDate(entry?.updatedAt);
+  if (type === "story") return parseEntryFilterDate(entry?.time) || parseEntryFilterDate(entry?.updatedAt);
+  if (type === "notes") return parseEntryFilterDate(entry?.updatedAt) || parseEntryFilterDate(entry?.time);
+  return null;
+}
+
+function parseEntryFilterDate(value) {
+  if (!value) return null;
+  if (typeof value === "number" || /^\d{11,}$/.test(String(value))) {
+    const date = new Date(Number(value));
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const text = String(value).trim();
+  const match = text.match(/^(\d{4})(?:[-/.\u5e74]\s*)(\d{1,2})(?:[-/.\u6708]\s*(\d{1,2}))?/);
+  if (match) {
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3] || 1), 12);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatEntryFilterMonth(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})$/);
+  if (!match) return value;
+  return `${match[1]}\u5e74${Number(match[2])}\u6708`;
+}
+
 function renderWishes() {
   if (!els.wishList) return;
 
@@ -673,26 +1342,34 @@ function renderWishes() {
     const li = document.createElement("li");
     li.className = wish.done ? "done wish-edit-scope" : "wish-edit-scope";
 
+    const editable = canEdit();
     const check = document.createElement("button");
     check.className = "check";
     check.type = "button";
     check.textContent = wish.done ? "\u2713" : "\u25cb";
-    check.setAttribute("aria-label", wish.done ? "\u6807\u8bb0\u4e3a\u672a\u5b8c\u6210" : "\u6807\u8bb0\u4e3a\u5b8c\u6210");
+    check.disabled = !editable;
+    check.setAttribute("aria-label", editable
+      ? (wish.done ? "\u6807\u8bb0\u4e3a\u672a\u5b8c\u6210" : "\u6807\u8bb0\u4e3a\u5b8c\u6210")
+      : (wish.done ? "\u5df2\u5b8c\u6210" : "\u672a\u5b8c\u6210"));
     check.addEventListener("click", async () => {
       if (!canEdit()) return;
-      state.wishes[index].done = !state.wishes[index].done;
-      state.wishes[index].updatedAt = Date.now();
-      await saveState();
+      toggleWishDone(index);
       renderWishes();
+      scheduleStateSave();
     });
 
     const text = document.createElement("span");
     text.className = "wish-body";
     const wishText = document.createElement("span");
     wishText.innerHTML = sanitizeEditableHtml(wish.text);
+    const wishStatus = document.createElement("span");
+    wishStatus.className = wish.done ? "wish-status is-complete" : "wish-status";
+    wishStatus.textContent = "\u5df2\u5b8c\u6210";
+    wishStatus.hidden = !wish.done;
     const wishTime = document.createElement("small");
-    wishTime.textContent = wish.updatedAt ? `\u7F16\u8F91\u65F6\u95F4\uFF1A${formatEditTime(wish.updatedAt)}` : "";
-    text.append(wishText, wishTime);
+    wishTime.className = wish.done && wish.doneAt ? "wish-time is-complete" : "wish-time";
+    wishTime.textContent = getWishTimeText(wish);
+    text.append(wishText, wishStatus, wishTime);
 
     const edit = document.createElement("button");
     edit.className = "wish-edit";
@@ -713,8 +1390,8 @@ function renderWishes() {
     remove.addEventListener("click", async () => {
       if (!canEdit()) return;
       state.wishes.splice(index, 1);
-      await saveState();
       renderWishes();
+      scheduleStateSave();
     });
 
     li.addEventListener("click", (event) => {
@@ -726,6 +1403,23 @@ function renderWishes() {
     li.append(check, text, edit, remove);
     els.wishList.appendChild(li);
   });
+}
+
+function toggleWishDone(index) {
+  const wish = state.wishes[index];
+  if (!wish) return;
+  const nextDone = !wish.done;
+  const now = Date.now();
+  wish.done = nextDone;
+  wish.doneAt = nextDone ? now : "";
+  wish.updatedAt = now;
+}
+
+function getWishTimeText(wish) {
+  if (wish?.done && wish.doneAt) {
+    return `\u5B8C\u6210\u65F6\u95F4\uFF1A${formatEditTime(wish.doneAt)}`;
+  }
+  return wish?.updatedAt ? `\u7F16\u8F91\u65F6\u95F4\uFF1A${formatEditTime(wish.updatedAt)}` : "";
 }
 
 function initPhotos() {
@@ -745,7 +1439,7 @@ function initPhotos() {
       card.appendChild(button);
     }
 
-    input.addEventListener("change", () => {
+    input.addEventListener("change", async () => {
       if (!canEdit()) {
         input.value = "";
         return;
@@ -753,16 +1447,16 @@ function initPhotos() {
       const file = input.files[0];
       if (!file) return;
 
-      const reader = new FileReader();
-      reader.addEventListener("load", async () => {
+      try {
         const index = Number(input.dataset.photo);
-        state.photos[index] = reader.result;
+        state.photos[index] = await storeImageFile(file);
         state.photoPositions[index] = normalizePhotoPosition(state.photoPositions[index]);
         refreshPhotos();
         await saveState();
         openFixedPhotoPositionEditor(index);
-      });
-      reader.readAsDataURL(file);
+      } catch {
+        input.value = "";
+      }
     });
   });
 
@@ -920,7 +1614,7 @@ function initAlbumPhotoForm() {
     const hasNewPhoto = Boolean(file);
     let photo = existing?.photo || "";
 
-    if (file) photo = await readFileAsDataUrl(file);
+    if (file) photo = await storeImageFile(file);
     if (!photo) {
       setAlbumPhotoMessage("请先选择一张照片。");
       return;
@@ -975,16 +1669,29 @@ function renderPhotoEntries() {
   if (!els.albumPhotoList) return;
   els.albumPhotoList.innerHTML = "";
 
-  const entries = latestFirstEntries(state.photoEntries);
-  if (els.albumPhotoCount) els.albumPhotoCount.textContent = `${entries.length} 张照片`;
-  if (!entries.length) {
+  const sourceEntries = state.photoEntries || [];
+  refreshEntryFilter("album", sourceEntries);
+  const filteredEntries = filterEntries("album", sourceEntries);
+  const entries = latestFirstEntries(filteredEntries);
+  updateEntryFilterStatus("album", filteredEntries.length, sourceEntries.length);
+  if (els.albumPhotoCount) {
+    els.albumPhotoCount.textContent = filteredEntries.length === sourceEntries.length
+      ? `${sourceEntries.length} \u5f20\u7167\u7247`
+      : `${filteredEntries.length} / ${sourceEntries.length} \u5f20\u7167\u7247`;
+  }
+  if (!sourceEntries.length) {
     els.albumPhotoList.innerHTML = `<p class="album-empty">还没有照片，输入编辑密码后添加第一张回忆。</p>`;
+    return;
+  }
+  if (!filteredEntries.length) {
+    els.albumPhotoList.innerHTML = `<p class="album-empty">\u6ca1\u6709\u627e\u5230\u5339\u914d\u7684\u7167\u7247\u3002</p>`;
     return;
   }
 
   entries.forEach(({ entry }) => {
     const card = document.createElement("article");
     card.className = entry.photo ? "photo-card photo-entry-card has-image" : "photo-card photo-entry-card";
+    card.id = `memory-${entry.id}`;
     const position = normalizePhotoPosition(entry.position);
     card.innerHTML = `
       <img src="${escapeAttribute(entry.photo || "")}" alt="${escapeAttribute(entry.caption || "新增照片")}" style="object-position: ${position.x}% ${position.y}%;">
@@ -1063,6 +1770,13 @@ function initTravelMap() {
   }
   chinaAreaIndexPromise = loadChinaAreaIndex();
 
+  document.querySelectorAll("[data-travel-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      activeTravelFilter = button.dataset.travelFilter || "all";
+      renderTravelMap();
+    });
+  });
+
   els.travelPhoto?.addEventListener("change", () => {
     const trigger = document.querySelector(".travel-photo-field b");
     if (trigger) trigger.textContent = els.travelPhoto.files[0] ? "\u5df2\u9009\u62e9\u7167\u7247" : "\u9009\u62e9\u7167\u7247";
@@ -1101,7 +1815,7 @@ function initTravelMap() {
 
     const file = els.travelPhoto.files[0];
     if (file) {
-      entry.photo = await readFileAsDataUrl(file);
+      entry.photo = await storeImageFile(file);
     }
 
     state.travelEntries = [entry, ...state.travelEntries.filter((item) => {
@@ -1385,12 +2099,36 @@ function placeFromCoordinates(name, lon, lat) {
 }
 
 function geoToMapPoint(lon, lat) {
-  const x = 9 + ((lon - 73.5) / (135.1 - 73.5)) * 82;
-  const y = 8 + ((53.8 - lat) / (53.8 - 18.1)) * 87;
+  // These coefficients align geographic coordinates to the projection in china-map.svg.
+  // A simple longitude/latitude rectangle puts eastern cities noticeably out at sea.
+  const longitude = Number(lon);
+  const latitude = Number(lat);
+  const x = (1.3439371576 * longitude)
+    + (0.9864447782 * latitude)
+    - (0.0130768338 * longitude * latitude)
+    + (0.0034245799 * longitude * longitude)
+    + (0.0009262255 * latitude * latitude)
+    - 115.4704688122;
+  const y = (-0.7781898905 * longitude)
+    + (0.2806731686 * latitude)
+    - (0.0084730301 * longitude * latitude)
+    + (0.0047197343 * longitude * longitude)
+    - (0.0285455959 * latitude * latitude)
+    + 143.7452124943;
   return {
     x: Math.max(4, Math.min(96, x)),
     y: Math.max(4, Math.min(96, y))
   };
+}
+
+function getTravelMarkerPoint(entry) {
+  const knownPlace = findChinaPlace(entry.place);
+  if (knownPlace) return knownPlace;
+
+  const area = findChinaArea(entry.place);
+  if (area) return placeFromCoordinates(area.name, area.lon, area.lat);
+
+  return { x: entry.x, y: entry.y };
 }
 
 function renderProvinceLabels() {
@@ -1411,15 +2149,19 @@ function renderTravelMap() {
   if (!els.chinaMapMarkers && !els.travelEntryList) return;
 
   const entries = latestFirstEntries(state.travelEntries).map(({ entry }) => entry);
+  const visibleEntries = activeTravelFilter === "all"
+    ? entries
+    : entries.filter((entry) => entry.status === activeTravelFilter);
   if (els.chinaMapMarkers) {
     els.chinaMapMarkers.innerHTML = "";
     entries.forEach((entry) => {
       const displayName = getTravelPlaceDisplayName(entry.place);
+      const point = getTravelMarkerPoint(entry);
       const marker = document.createElement("button");
       marker.className = `china-marker is-${entry.status}`;
       marker.type = "button";
-      marker.style.left = `${entry.x}%`;
-      marker.style.top = `${entry.y}%`;
+      marker.style.left = `${point.x}%`;
+      marker.style.top = `${point.y}%`;
       marker.innerHTML = `<span></span><strong>${escapeHtml(displayName)}</strong>`;
       marker.setAttribute("aria-label", `${displayName}${travelStatusLabels[entry.status]}`);
       marker.addEventListener("click", () => focusTravelEntry(entry.id));
@@ -1428,11 +2170,12 @@ function renderTravelMap() {
   }
 
   if (els.travelEntryList) {
-    els.travelEntryList.innerHTML = entries.length ? "" : `<p class="travel-empty">\u8fd8\u6ca1\u6709\u5730\u70b9\uff0c\u5148\u5728\u5de6\u4fa7\u641c\u7d22\u4e00\u4e2a\u57ce\u5e02\u6807\u8bb0\u5427\u3002</p>`;
-    entries.forEach((entry, index) => {
+    els.travelEntryList.innerHTML = visibleEntries.length ? "" : `<p class="travel-empty">这个分类里还没有地点，换一个标签看看，或添加新的旅行计划。</p>`;
+    visibleEntries.forEach((entry, index) => {
       const displayName = getTravelPlaceDisplayName(entry.place);
       const card = document.createElement("article");
       card.className = `travel-entry-card is-${entry.status}`;
+      card.id = `memory-${entry.id}`;
       card.dataset.travelEntry = entry.id;
       card.dataset.travelIndex = String(index);
       card.innerHTML = `
@@ -1447,7 +2190,7 @@ function renderTravelMap() {
           <small class="travel-visit-date">${entry.visitDate ? `\u6765\u5230\u8fd9\u91cc\u7684\u65F6\u95F4\uFF1A${entry.visitDate}` : ""}</small>
           <div class="travel-entry-actions">
             <button type="button" data-travel-move="${escapeAttribute(entry.id)}" data-travel-direction="-1" ${index === 0 ? "disabled" : ""}>\u4e0a\u79fb</button>
-            <button type="button" data-travel-move="${escapeAttribute(entry.id)}" data-travel-direction="1" ${index === entries.length - 1 ? "disabled" : ""}>\u4e0b\u79fb</button>
+            <button type="button" data-travel-move="${escapeAttribute(entry.id)}" data-travel-direction="1" ${index === visibleEntries.length - 1 ? "disabled" : ""}>\u4e0b\u79fb</button>
             <button type="button" data-travel-edit="${escapeAttribute(entry.id)}">\u7f16\u8f91</button>
             <label>
               <input type="file" accept="image/*" data-travel-photo="${escapeAttribute(entry.id)}">
@@ -1516,7 +2259,7 @@ function renderTravelMap() {
         if (!file) return;
         const entry = state.travelEntries.find((item) => item.id === input.dataset.travelPhoto);
         if (!entry) return;
-        entry.photo = await readFileAsDataUrl(file);
+        entry.photo = await storeImageFile(file);
         entry.position = normalizePhotoPosition(entry.position);
         entry.updatedAt = Date.now();
         renderTravelMap();
@@ -1551,6 +2294,19 @@ function renderTravelMap() {
   if (els.travelVisitedCount) els.travelVisitedCount.textContent = String(counts.visited || 0);
   if (els.travelWishlistCount) els.travelWishlistCount.textContent = String(counts.wishlist || 0);
   if (els.travelNextCount) els.travelNextCount.textContent = String(counts.next || 0);
+  if (els.travelAllCount) els.travelAllCount.textContent = String(entries.length);
+  if (els.travelRecordCount) els.travelRecordCount.textContent = `${visibleEntries.length} 个地点`;
+
+  document.querySelectorAll("[data-travel-filter]").forEach((button) => {
+    const isActive = button.dataset.travelFilter === activeTravelFilter;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+
+  const nextEntry = entries.find((entry) => entry.status === "next") || entries.find((entry) => entry.status === "wishlist");
+  if (els.travelNextPlace) els.travelNextPlace.textContent = nextEntry ? getTravelPlaceDisplayName(nextEntry.place) : "下一次出发";
+  if (els.travelNextNote) els.travelNextNote.textContent = nextEntry?.note || "选一个想去很久的地方，订下属于你们的下一站。";
+  if (els.travelNextStatus) els.travelNextStatus.textContent = nextEntry ? travelStatusLabels[nextEntry.status] : "NEXT";
 }
 
 async function moveTravelEntry(id, direction) {
@@ -1649,12 +2405,131 @@ function showTravelMessage(message) {
 }
 
 function readFileAsDataUrl(file) {
+  return prepareImageBlob(file).then(blobToDataUrl);
+}
+
+async function storeImageFile(file) {
+  const blob = await prepareImageBlob(file);
+  return uploadImageBlob(blob);
+}
+
+async function prepareImageBlob(file, options = {}) {
+  if (!file || !String(file.type || "").startsWith("image/")) {
+    throw new Error("invalid image file");
+  }
+
+  const settings = {
+    maxWidth: options.maxWidth || 1600,
+    maxHeight: options.maxHeight || 1600,
+    quality: options.quality || 0.82,
+    type: options.type || "image/jpeg"
+  };
+  const sourceUrl = URL.createObjectURL(file);
+  try {
+    const image = await loadImageElement(sourceUrl);
+    const ratio = Math.min(1, settings.maxWidth / image.naturalWidth, settings.maxHeight / image.naturalHeight);
+    const width = Math.max(1, Math.round(image.naturalWidth * ratio));
+    const height = Math.max(1, Math.round(image.naturalHeight * ratio));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", { alpha: false });
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    const blob = await canvasToBlob(canvas, settings.type, settings.quality);
+    if (!blob) throw new Error("image compression failed");
+    return blob;
+  } finally {
+    URL.revokeObjectURL(sourceUrl);
+  }
+}
+
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener("load", () => resolve(image), { once: true });
+    image.addEventListener("error", reject, { once: true });
+    image.src = src;
+  });
+}
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve) => {
+    canvas.toBlob(resolve, type, quality);
+  });
+}
+
+function blobToDataUrl(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.addEventListener("load", () => resolve(reader.result));
     reader.addEventListener("error", reject);
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(blob);
   });
+}
+
+function dataUrlToBlob(value) {
+  const match = String(value || "").match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) return null;
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: match[1] });
+}
+
+async function uploadImageBlob(blob) {
+  try {
+    const response = await fetch(apiImagesUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": blob.type || "image/jpeg",
+        "X-Edit-Token": sessionStorage.getItem(editTokenKey) || ""
+      },
+      body: blob
+    });
+    if (!response.ok) throw new Error("image upload failed");
+    const payload = await response.json();
+    if (payload?.src) return String(payload.src);
+  } catch {
+    // Static/offline copies cannot accept file uploads, so keep a compressed
+    // inline image as a graceful fallback.
+  }
+  return blobToDataUrl(blob);
+}
+
+async function moveInlineImagesToUploads(target) {
+  const seen = new Map();
+
+  const moveValue = async (value) => {
+    if (typeof value !== "string" || !value.startsWith("data:image/")) return value;
+    if (seen.has(value)) return seen.get(value);
+    const blob = dataUrlToBlob(value);
+    if (!blob) return value;
+    const next = await uploadImageBlob(blob);
+    seen.set(value, next);
+    return next;
+  };
+
+  const walk = async (value) => {
+    if (Array.isArray(value)) {
+      for (let index = 0; index < value.length; index += 1) {
+        value[index] = await walk(value[index]);
+      }
+      return value;
+    }
+    if (value && typeof value === "object") {
+      for (const key of Object.keys(value)) {
+        value[key] = await walk(value[key]);
+      }
+      return value;
+    }
+    return moveValue(value);
+  };
+
+  await walk(target);
 }
 
 function initForms() {
@@ -1672,6 +2547,7 @@ function initForms() {
       event.preventDefault();
       const code = els.loginCode.value.trim();
       const continueToHome = () => {
+        sessionStorage.removeItem(guestKey);
         sessionStorage.setItem(authKey, "yes");
         const returnTo = sessionStorage.getItem("editor-return-to") || "index.html";
         sessionStorage.removeItem("editor-return-to");
@@ -1686,6 +2562,7 @@ function initForms() {
         const payload = await response.json();
         if (response.ok && payload.ok && (!isEditorLogin || payload.token)) {
           if (isEditorLogin) {
+            sessionStorage.removeItem(guestKey);
             sessionStorage.setItem(authKey, "yes");
             sessionStorage.setItem(editTokenKey, payload.token);
             setEditorMode(true);
@@ -1701,16 +2578,17 @@ function initForms() {
         // Fall through to the same generic login error.
       }
 
-      // Static copies can be opened without the local API server. Keep the
-      // public access gate usable while editor authorization remains server-side.
-      if (!isEditorLogin && code === defaults.accessCode) {
+      // Static copies can be opened without the local API server. Use the
+      // exported state so changed access codes keep working offline.
+      if (!isEditorLogin && code === (state.accessCode || defaults.accessCode)) {
         continueToHome();
         return;
       }
 
       // Offline editor fallback: when the server is unavailable, accept the
-      // default edit code so editing still works on static copies.
-      if (isEditorLogin && code === defaults.editCode) {
+      // exported edit code so editing still works on static copies.
+      if (isEditorLogin && code === (state.editCode || defaults.editCode)) {
+        sessionStorage.removeItem(guestKey);
         sessionStorage.setItem(authKey, "yes");
         sessionStorage.setItem(editTokenKey, "offline-" + Date.now());
         setEditorMode(true);
@@ -1740,20 +2618,47 @@ function initForms() {
     });
   }
 
+  document.querySelector("[data-export-state]")?.addEventListener("click", exportStateFile);
+  els.copyGuestLink?.addEventListener("click", copyGuestShareLink);
+
   if (els.wishForm) {
     els.wishForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!canEdit()) return;
       const text = els.wishInput.value.trim();
       if (!text) return;
-      state.wishes.unshift({ text: sanitizeEditableHtml(text), done: false, updatedAt: Date.now() });
+      state.wishes.unshift({ text: sanitizeEditableHtml(text), done: false, doneAt: "", updatedAt: Date.now() });
       els.wishInput.value = "";
       renderWishes();
-      await saveState();
+      scheduleStateSave();
     });
   }
 
   initContentForms();
+  initCapsulePage();
+}
+
+function createGuestShareLink() {
+  const url = new URL("index.html", window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("guest", "1");
+  return url.href;
+}
+
+async function copyGuestShareLink(event) {
+  const button = event.currentTarget;
+  const originalText = button.textContent;
+  const link = createGuestShareLink();
+  try {
+    await navigator.clipboard.writeText(link);
+  } catch {
+    window.prompt("复制访客链接", link);
+  }
+  button.textContent = "已复制访客链接";
+  window.setTimeout(() => {
+    button.textContent = originalText;
+  }, 1800);
 }
 
 function initContentForms() {
@@ -1773,8 +2678,10 @@ function initContentForms() {
       // Handle new image upload if present
       if (entry._imageFile) {
         try {
-          entry.image = await readFileAsDataUrl(entry._imageFile);
-          entry.imagePosition = normalizePhotoPosition();
+          entry.image = await storeImageFile(entry._imageFile);
+          entry.imagePosition = form.dataset.currentImagePosition
+            ? normalizePhotoPosition(JSON.parse(form.dataset.currentImagePosition))
+            : normalizePhotoPosition();
         } catch {
           setContentFormMessage(form, "\u56fe\u7247\u8bfb\u53d6\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5\u3002");
           return;
@@ -1831,17 +2738,18 @@ function initContentForms() {
 
       imageSelect?.addEventListener('click', () => imageInput?.click());
 
-      imageInput?.addEventListener('change', () => {
+      imageInput?.addEventListener('change', async () => {
         const file = imageInput.files[0];
         if (!file) return;
-        const preview = imageUpload.querySelector('[data-image-preview]');
-        const reader = new FileReader();
-        reader.addEventListener('load', () => {
-          updateContentEntryImagePreview(imageUpload, reader.result);
-          form.dataset.currentImage = reader.result;
+        try {
+          const previewSrc = await readFileAsDataUrl(file);
+          updateContentEntryImagePreview(imageUpload, previewSrc);
+          form.dataset.currentImage = previewSrc;
           delete form.dataset.currentImagePosition;
-        });
-        reader.readAsDataURL(file);
+          delete form.dataset.imageRemoved;
+        } catch {
+          imageInput.value = "";
+        }
       });
 
       imagePosition?.addEventListener('click', () => {
@@ -1863,10 +2771,303 @@ function initContentForms() {
         if (imageInput) imageInput.value = "";
         form.dataset.currentImage = "";
         delete form.dataset.currentImagePosition;
+        form.dataset.imageRemoved = "yes";
         updateContentEntryImagePreview(imageUpload, "");
       });
     }
   });
+}
+
+function initCapsulePage() {
+  const form = document.querySelector("[data-capsule-form]");
+  if (!form) return;
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!canEdit()) return;
+    const title = String(form.elements.title?.value || "").trim();
+    const text = String(form.elements.text?.value || "").trim();
+    const unlockAt = fromDatetimeLocal(form.elements.unlockAt?.value);
+    if (!title || !text || !unlockAt) {
+      setCapsuleFormMessage(form, "请填写标题、信件内容和开启时间。");
+      return;
+    }
+
+    const editingId = form.dataset.editingId;
+    const updatedAt = fromDatetimeLocal(form.elements.updatedAt?.value) || Date.now();
+    const capsule = {
+      id: editingId || `capsule-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      title: sanitizeEditableHtml(title),
+      text: sanitizeEditableHtml(text),
+      unlockAt,
+      createdAt: editingId
+        ? (state.capsules.find((item) => item.id === editingId)?.createdAt || updatedAt)
+        : updatedAt,
+      updatedAt
+    };
+    const capsules = state.capsules || [];
+    const index = capsules.findIndex((item) => item.id === editingId);
+    if (index >= 0) capsules[index] = capsule;
+    else capsules.unshift(capsule);
+    state.capsules = capsules;
+    forgetCapsuleAlertState(capsule.id);
+    resetCapsuleForm(form);
+    renderCapsules();
+    checkCapsuleUnlockAlerts();
+    scheduleNextCapsuleUnlockAlert();
+    await saveState();
+    setCapsuleFormMessage(form, editingId ? "已保存修改。" : "时间胶囊已封存。");
+  });
+
+  form.querySelector("[data-capsule-cancel]")?.addEventListener("click", () => {
+    resetCapsuleForm(form);
+    setCapsuleFormMessage(form, "");
+  });
+  form.querySelector("[data-capsule-delete-entry]")?.addEventListener("click", async () => {
+    const editingId = form.dataset.editingId;
+    if (!editingId || !canEdit()) return;
+    if (!confirm("确定删除这封时间胶囊吗？删除后无法恢复。")) return;
+    state.capsules = (state.capsules || []).filter((item) => item.id !== editingId);
+    forgetCapsuleAlertState(editingId);
+    resetCapsuleForm(form);
+    renderCapsules();
+    checkCapsuleUnlockAlerts();
+    scheduleNextCapsuleUnlockAlert();
+    await saveState();
+    setCapsuleFormMessage(form, "已删除。");
+  });
+
+  window.setInterval(renderCapsules, 1000);
+}
+
+function setCapsuleFormMessage(form, message) {
+  const target = form?.querySelector("[data-capsule-message]");
+  if (target) target.textContent = message;
+}
+
+function resetCapsuleForm(form = document.querySelector("[data-capsule-form]")) {
+  if (!form) return;
+  form.reset();
+  delete form.dataset.editingId;
+  form.classList.remove("is-editing-entry");
+  form.querySelector("[data-capsule-cancel]")?.setAttribute("hidden", "");
+  form.querySelector("[data-capsule-delete-entry]")?.setAttribute("hidden", "");
+  form.querySelector("[data-edit-time-field]")?.setAttribute("hidden", "");
+  form.querySelector('button[type="submit"]')?.replaceChildren(document.createTextNode("封存时间胶囊"));
+}
+
+function formatCapsuleDate(value) {
+  const date = new Date(Number(value));
+  if (Number.isNaN(date.getTime())) return "时间待定";
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit"
+  }).format(date);
+}
+
+function readStoredIdSet(key) {
+  try {
+    const values = JSON.parse(localStorage.getItem(key) || "[]");
+    return new Set(Array.isArray(values) ? values.map((value) => String(value)) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeStoredIdSet(key, values) {
+  try {
+    localStorage.setItem(key, JSON.stringify([...values]));
+  } catch {
+    // Alerts still work for this page view when storage is unavailable.
+  }
+}
+
+function forgetCapsuleAlertState(id) {
+  [capsuleDismissedKey, capsuleNotifiedKey].forEach((key) => {
+    const values = readStoredIdSet(key);
+    values.delete(String(id));
+    writeStoredIdSet(key, values);
+  });
+}
+
+function getUnlockedCapsuleAlerts(now = Date.now()) {
+  const dismissed = readStoredIdSet(capsuleDismissedKey);
+  return [...(state.capsules || [])]
+    .filter((entry) => {
+      const id = String(entry?.id || "");
+      return id && Number(entry.unlockAt) <= now && !dismissed.has(id);
+    })
+    .sort((a, b) => Number(b.unlockAt) - Number(a.unlockAt));
+}
+
+function getCapsulePageUrl() {
+  const url = new URL("daily.html", window.location.href);
+  if (isGuestMode()) url.searchParams.set("guest", "1");
+  return url.href;
+}
+
+function checkCapsuleUnlockAlerts() {
+  if (page === "login" || !isLoggedIn()) return;
+  const entries = getUnlockedCapsuleAlerts();
+  if (!entries.length) {
+    hideCapsuleUnlockBanner();
+    scheduleNextCapsuleUnlockAlert();
+    return;
+  }
+  showCapsuleUnlockBanner(entries);
+  notifyUnlockedCapsules(entries);
+  scheduleNextCapsuleUnlockAlert();
+}
+
+function scheduleNextCapsuleUnlockAlert() {
+  window.clearTimeout(capsuleUnlockTimer);
+  if (page === "login" || !isLoggedIn()) return;
+
+  const now = Date.now();
+  const dismissed = readStoredIdSet(capsuleDismissedKey);
+  const nextUnlock = [...(state.capsules || [])]
+    .filter((entry) => {
+      const id = String(entry?.id || "");
+      return id && Number(entry.unlockAt) > now && !dismissed.has(id);
+    })
+    .sort((a, b) => Number(a.unlockAt) - Number(b.unlockAt))[0];
+
+  if (!nextUnlock) return;
+  const maxDelay = 2_147_483_647;
+  const delay = Math.max(1000, Math.min(Number(nextUnlock.unlockAt) - now + 500, maxDelay));
+  capsuleUnlockTimer = window.setTimeout(checkCapsuleUnlockAlerts, delay);
+}
+
+function showCapsuleUnlockBanner(entries) {
+  const latest = entries[0];
+  const countText = entries.length > 1 ? `${entries.length} 封时间胶囊已解锁` : "有一封时间胶囊已解锁";
+  const title = String(latest.title || "写给未来的信").trim();
+  let banner = document.querySelector("[data-capsule-alert]");
+  if (!banner) {
+    banner = document.createElement("section");
+    banner.className = "capsule-unlock-banner";
+    banner.dataset.capsuleAlert = "";
+    banner.setAttribute("role", "status");
+    banner.setAttribute("aria-live", "polite");
+    document.body.appendChild(banner);
+  }
+
+  const canAskNotification = "Notification" in window && Notification.permission === "default";
+  banner.innerHTML = `
+    <div>
+      <strong>${escapeHtml(countText)}</strong>
+      <p>${escapeHtml(title)} · ${escapeHtml(formatCapsuleDate(latest.unlockAt))}</p>
+    </div>
+    <div class="capsule-alert-actions">
+      ${canAskNotification ? '<button type="button" data-capsule-notify>开启浏览器通知</button>' : ""}
+      <button type="button" data-capsule-view>去查看</button>
+      <button type="button" data-capsule-dismiss>知道了</button>
+    </div>
+  `;
+
+  banner.querySelector("[data-capsule-view]")?.addEventListener("click", () => {
+    if (page === "capsules") {
+      const card = document.querySelector(`[data-capsule-entry="${CSS.escape(latest.id)}"]`);
+      card?.scrollIntoView({ behavior: "smooth", block: "center" });
+      card?.classList.add("is-unlocked-alert");
+      window.setTimeout(() => card?.classList.remove("is-unlocked-alert"), 2400);
+      return;
+    }
+    navigateWithTransition(getCapsulePageUrl(), -1);
+  });
+
+  banner.querySelector("[data-capsule-dismiss]")?.addEventListener("click", () => {
+    const dismissed = readStoredIdSet(capsuleDismissedKey);
+    entries.forEach((entry) => dismissed.add(String(entry.id)));
+    writeStoredIdSet(capsuleDismissedKey, dismissed);
+    hideCapsuleUnlockBanner();
+    scheduleNextCapsuleUnlockAlert();
+  });
+
+  banner.querySelector("[data-capsule-notify]")?.addEventListener("click", async () => {
+    if (!("Notification" in window)) return;
+    const permission = await Notification.requestPermission();
+    if (permission === "granted") notifyUnlockedCapsules(entries, true);
+    showCapsuleUnlockBanner(entries);
+  });
+}
+
+function hideCapsuleUnlockBanner() {
+  document.querySelector("[data-capsule-alert]")?.remove();
+}
+
+function notifyUnlockedCapsules(entries, force = false) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const notified = readStoredIdSet(capsuleNotifiedKey);
+  const freshEntries = entries.filter((entry) => force || !notified.has(String(entry.id)));
+  if (!freshEntries.length) return;
+
+  const latest = freshEntries[0];
+  const notification = new Notification("时间胶囊已解锁", {
+    body: `${latest.title || "写给未来的信"} · 去看看这封准时到达的信。`,
+    tag: `capsule-${latest.id}`,
+    renotify: false
+  });
+  notification.addEventListener("click", () => {
+    window.focus();
+    navigateWithTransition(getCapsulePageUrl(), -1);
+  });
+
+  freshEntries.forEach((entry) => notified.add(String(entry.id)));
+  writeStoredIdSet(capsuleNotifiedKey, notified);
+}
+
+function renderCapsules() {
+  const list = document.querySelector("[data-capsule-list]");
+  if (!list) return;
+  const now = Date.now();
+  const capsules = [...(state.capsules || [])].sort((a, b) => a.unlockAt - b.unlockAt);
+  list.innerHTML = "";
+  if (!capsules.length) {
+    list.innerHTML = `<p class="content-empty">${canEdit() ? "还没有时间胶囊，写一封信给未来的 TA 吧。" : "这里还没有封存的信件。"}</p>`;
+    return;
+  }
+  capsules.forEach((entry) => {
+    const unlocked = now >= entry.unlockAt;
+    const card = document.createElement("article");
+    card.className = `capsule-card${unlocked ? "" : " is-locked"}`;
+    card.dataset.capsuleEntry = entry.id;
+    const safeTitle = escapeHtml(entry.title || "写给未来的你");
+    const date = escapeHtml(formatCapsuleDate(entry.unlockAt));
+    card.innerHTML = unlocked
+      ? `<div class="capsule-card-head"><span class="capsule-status">已开启</span><time>${date}</time></div><h3>${safeTitle}</h3><div class="capsule-letter">${sanitizeEditableHtml(entry.text)}</div>${entry.updatedAt ? `<small class="module-edit-time">编辑时间：${escapeHtml(formatEditTime(entry.updatedAt))}</small>` : ""}${contentEntryActionsHtml(entry.id)}`
+      : `<div class="capsule-lock" aria-hidden="true">&#128274;</div><div class="capsule-card-head"><span class="capsule-status">尚未开启</span><time>${date}</time></div><h3>${safeTitle}</h3><p class="capsule-locked-copy">这封信会在开启日与 TA 见面。</p>${contentEntryActionsHtml(entry.id)}`;
+    card.querySelector("[data-content-edit]")?.addEventListener("click", () => editCapsule(entry.id));
+    card.querySelector("[data-content-delete]")?.addEventListener("click", async () => {
+      if (!canEdit()) return;
+      state.capsules = (state.capsules || []).filter((item) => item.id !== entry.id);
+      forgetCapsuleAlertState(entry.id);
+      renderCapsules();
+      checkCapsuleUnlockAlerts();
+      scheduleNextCapsuleUnlockAlert();
+      await saveState();
+    });
+    list.appendChild(card);
+  });
+}
+
+function editCapsule(id) {
+  if (!canEdit()) return;
+  const form = document.querySelector("[data-capsule-form]");
+  const entry = (state.capsules || []).find((item) => item.id === id);
+  if (!form || !entry) return;
+  form.dataset.editingId = id;
+  form.classList.add("is-editing-entry");
+  form.elements.title.value = entry.title || "";
+  form.elements.text.value = entry.text || "";
+  form.elements.unlockAt.value = toDatetimeLocal(entry.unlockAt);
+  if (form.elements.updatedAt) form.elements.updatedAt.value = toDatetimeLocal(entry.updatedAt || Date.now());
+  form.querySelector("[data-capsule-cancel]")?.removeAttribute("hidden");
+  form.querySelector("[data-capsule-delete-entry]")?.removeAttribute("hidden");
+  form.querySelector("[data-edit-time-field]")?.removeAttribute("hidden");
+  form.querySelector('button[type="submit"]')?.replaceChildren(document.createTextNode("保存修改"));
+  setCapsuleFormMessage(form, "正在编辑，保存后覆盖这封信。");
+  form.scrollIntoView({ behavior: "smooth", block: "center" });
+  form.elements.title.focus();
 }
 
 function readContentEntryForm(type, form) {
@@ -1900,6 +3101,9 @@ function readContentEntryForm(type, form) {
     entry.imagePosition = form.dataset.currentImagePosition
       ? JSON.parse(form.dataset.currentImagePosition)
       : normalizePhotoPosition();
+  } else if (form.dataset.imageRemoved === "yes") {
+    entry.image = "";
+    entry.imagePosition = normalizePhotoPosition();
   }
   entry.imageSize = imageSizeSelect?.value || config.defaults.imageSize || "medium";
 
@@ -1925,6 +3129,7 @@ function resetContentEntryForm(type, form = document.querySelector(contentEntryC
   delete form.dataset.editingId;
   delete form.dataset.currentImage;
   delete form.dataset.currentImagePosition;
+  delete form.dataset.imageRemoved;
   form.classList.remove("is-editing-entry");
   form.querySelector("[data-content-cancel]")?.setAttribute("hidden", "");
   form.querySelector("[data-content-delete-entry]")?.setAttribute("hidden", "");
@@ -1968,12 +3173,28 @@ function renderContentEntries(targetType) {
     if (!list) return;
 
     const entries = state.contentEntries[type] || [];
+    const usesFilter = ["story", "notes"].includes(type);
+    if (usesFilter) {
+      refreshEntryFilter(type, entries);
+    }
+    const visibleEntries = usesFilter ? filterEntries(type, entries) : entries;
+    if (usesFilter) {
+      updateEntryFilterStatus(type, visibleEntries.length, entries.length);
+    }
     list.innerHTML = "";
+    if (entries.length === 0) {
+      list.innerHTML = `<p class="content-empty">${canEdit() ? "还没有内容，在右侧表单写下第一条吧。" : "这里还很安静，登录后写下第一条回忆。"}</p>`;
+      return;
+    }
+    if (!visibleEntries.length) {
+      list.innerHTML = `<p class="content-empty">\u6ca1\u6709\u627e\u5230\u5339\u914d\u7684\u5185\u5bb9\u3002</p>`;
+      return;
+    }
     const sortedEntries = type === "storyTimeline"
-      ? storyTimelineEntries(entries)
+      ? storyTimelineEntries(visibleEntries)
       : type === "story"
-        ? chronologicalStoryEntries(entries)
-        : latestFirstEntries(entries);
+        ? chronologicalStoryEntries(visibleEntries)
+        : latestFirstEntries(visibleEntries);
     sortedEntries.forEach(({ entry }) => {
       list.appendChild(createContentEntryCard(type, entry));
     });
@@ -2002,6 +3223,7 @@ function createContentEntryCard(type, entry) {
   const config = contentEntryConfig[type];
   const card = document.createElement("article");
   card.className = config.cardClass;
+  card.id = `memory-${entry.id}`;
   card.dataset.contentEntry = entry.id;
 
   if (type === "story") {
@@ -2176,10 +3398,24 @@ function initNavigation() {
         navigateWithTransition("index.html", 1);
         return;
       }
+      if (isGuestMode()) {
+        sessionStorage.removeItem(guestKey);
+        sessionStorage.removeItem(authKey);
+        sessionStorage.removeItem(editTokenKey);
+        navigateWithTransition("login.html", 1);
+        return;
+      }
       sessionStorage.setItem("editor-return-to", window.location.pathname.split("/").pop() || "index.html");
       navigateWithTransition("login.html?mode=editor", 1);
     });
   });
+}
+
+function syncHeaderHeight() {
+  const header = document.querySelector(".site-header");
+  if (!header) return;
+  const height = Math.ceil(header.getBoundingClientRect().height);
+  document.documentElement.style.setProperty("--header-h", `${height + 12}px`);
 }
 
 function collectEditableDefaults() {
@@ -2349,7 +3585,17 @@ function openWishEditor(scope, index) {
         <span>\u5185\u5bb9</span>
         <textarea data-wish-text rows="3">${escapeHtml(wish.text)}</textarea>
       </label>
-      <p class="edit-panel-meta">${wish.updatedAt ? `\u4E0A\u6B21\u7F16\u8F91\uFF1A${formatEditTime(wish.updatedAt)}` : ""}</p>
+      <div class="edit-panel-times">
+        <label>
+          <span>\u7f16\u8f91\u65f6\u95f4</span>
+          <input type="datetime-local" data-wish-updated-at value="${escapeAttribute(toDatetimeLocal(wish.updatedAt || Date.now()))}">
+        </label>
+        <label>
+          <span>\u5b8c\u6210\u65f6\u95f4</span>
+          <input type="datetime-local" data-wish-done-at value="${escapeAttribute(toDatetimeLocal(wish.doneAt || (wish.done ? wish.updatedAt : 0) || ""))}">
+        </label>
+      </div>
+      <p class="edit-panel-meta">${getWishTimeText(wish)}</p>
       <div class="edit-panel-actions">
         <button type="button" class="ghost-action" data-editor-done>${wish.done ? "\u6807\u4e3a\u672a\u5b8c\u6210" : "\u6807\u4e3a\u5b8c\u6210"}</button>
         <button type="button" class="danger-action" data-editor-delete>\u5220\u9664</button>
@@ -2365,28 +3611,32 @@ function openWishEditor(scope, index) {
     if (!canEdit()) return;
     if (!confirm("\u786e\u5b9a\u5220\u9664\u8fd9\u4e2a\u613f\u671b\u5417\uff1f\u5220\u9664\u540e\u65e0\u6cd5\u6062\u590d\u3002")) return;
     state.wishes.splice(index, 1);
-    await saveState();
     renderWishes();
     closeEditor();
+    scheduleStateSave();
   });
   editor.panel.querySelector("[data-editor-done]").addEventListener("click", async () => {
     if (!canEdit()) return;
     if (!state.wishes[index]) return;
-    state.wishes[index].done = !state.wishes[index].done;
-    state.wishes[index].updatedAt = Date.now();
-    await saveState();
+    toggleWishDone(index);
     renderWishes();
     closeEditor();
+    scheduleStateSave();
   });
   editor.panel.querySelector("form").addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!canEdit()) return;
     if (!state.wishes[index]) return;
     state.wishes[index].text = sanitizeEditableHtml(editor.panel.querySelector("[data-wish-text]").value.trim()) || state.wishes[index].text;
-    state.wishes[index].updatedAt = Date.now();
-    await saveState();
+    const updatedAtInput = editor.panel.querySelector("[data-wish-updated-at]");
+    const doneAtInput = editor.panel.querySelector("[data-wish-done-at]");
+    state.wishes[index].updatedAt = fromDatetimeLocal(updatedAtInput?.value) || state.wishes[index].updatedAt || Date.now();
+    state.wishes[index].doneAt = state.wishes[index].done
+      ? (fromDatetimeLocal(doneAtInput?.value) || state.wishes[index].doneAt || state.wishes[index].updatedAt || Date.now())
+      : "";
     renderWishes();
     closeEditor();
+    scheduleStateSave();
   });
   editor.panel.querySelector("[data-wish-text]")?.focus();
 }
@@ -2507,8 +3757,19 @@ function sanitizeEditableHtml(value) {
   return template.innerHTML;
 }
 
+function initPwaServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  if (!window.isSecureContext && location.hostname !== "localhost") return;
+
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {
+      // PWA install is optional; the site should still work as a normal page.
+    });
+  });
+}
+
 function initPageTransitions() {
-  const pageOrder = ["login", "home", "story", "daily", "notes", "travel", "album", "wishes"];
+  const pageOrder = ["login", "home", "story", "notes", "travel", "album", "wishes", "capsules"];
   const currentIndex = pageOrder.indexOf(page);
 
   window.requestAnimationFrame(() => {
@@ -2572,96 +3833,343 @@ function initCanvas() {
   const canvas = document.querySelector("#skyCanvas");
   if (!canvas) return;
 
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduceMotion) return;
+  const isMobile = window.matchMedia("(max-width: 720px), (pointer: coarse)").matches;
   const ctx = canvas.getContext("2d");
-  const particles = Array.from({ length: 70 }, () => createParticle());
+  const particles = Array.from({ length: isMobile ? 18 : 44 }, () => createParticle());
+  const glowOrbs = [
+    { x: 0.16, y: 0.22, radius: isMobile ? 210 : 320, driftX: 0.018, driftY: 0.014, phase: 0.2, period: 24000, inner: "rgba(255, 159, 110, 0.18)", mid: "rgba(255, 159, 110, 0.07)" },
+    { x: 0.82, y: 0.18, radius: isMobile ? 180 : 280, driftX: 0.014, driftY: 0.018, phase: 1.4, period: 28000, inner: "rgba(43, 179, 163, 0.16)", mid: "rgba(43, 179, 163, 0.06)" },
+    { x: 0.74, y: 0.76, radius: isMobile ? 160 : 260, driftX: 0.016, driftY: 0.012, phase: 2.1, period: 32000, inner: "rgba(119, 98, 209, 0.14)", mid: "rgba(119, 98, 209, 0.05)" }
+  ];
+  let animationFrame = null;
+  let running = false;
+  let lastFrameTime = 0;
 
-  function createParticle() {
+  function randomColor() {
+    return ["#ff6f7d", "#2bb3a3", "#f3c455", "#7762d1", "#ff9f6e"][Math.floor(Math.random() * 5)];
+  }
+
+  function pickKind(forceHeart = false) {
+    if (forceHeart) return "heart";
+    const roll = Math.random();
+    if (roll < 0.62) return "heart";
+    if (roll < 0.84) return "dot";
+    return "star";
+  }
+
+  function createParticle(options = {}) {
+    const kind = options.kind || pickKind(Boolean(options.burst));
+    const baseSize = kind === "heart"
+      ? 2.2 + Math.random() * 4.8
+      : kind === "star"
+        ? 1.4 + Math.random() * 2.8
+        : 1.1 + Math.random() * 1.9;
     return {
-      x: Math.random(),
-      y: Math.random(),
-      size: 2 + Math.random() * 5,
-      speed: 0.15 + Math.random() * 0.45,
-      depth: 0.35 + Math.random() * 1.15,
+      x: typeof options.x === "number" ? options.x : Math.random(),
+      y: typeof options.y === "number" ? options.y : Math.random(),
+      size: typeof options.size === "number" ? options.size : baseSize,
+      depth: typeof options.depth === "number" ? options.depth : 0.35 + Math.random() * 1.15,
       sway: Math.random() * Math.PI * 2,
-      color: ["#ff6f7d", "#2bb3a3", "#f3c455", "#7762d1"][Math.floor(Math.random() * 4)]
+      swaySpeed: (Math.random() - 0.5) * 0.0015,
+      color: options.color || randomColor(),
+      rotation: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 0.0015,
+      alpha: typeof options.alpha === "number" ? options.alpha : (kind === "heart" ? 0.18 + Math.random() * 0.18 : 0.14 + Math.random() * 0.12),
+      kind,
+      burst: Boolean(options.burst),
+      life: typeof options.life === "number" ? options.life : (options.burst ? 760 + Math.random() * 360 : Infinity),
+      age: 0,
+      vx: typeof options.vx === "number" ? options.vx : (Math.random() - 0.5) * 0.00018,
+      vy: typeof options.vy === "number" ? options.vy : (kind === "heart" ? -(0.000035 + Math.random() * 0.00006) : -(0.000015 + Math.random() * 0.00003)),
+      twinkle: Math.random() * Math.PI * 2
     };
   }
 
   function resize() {
-    const ratio = window.devicePixelRatio || 1;
+    const ratio = Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 2);
     canvas.width = Math.floor(window.innerWidth * ratio);
     canvas.height = Math.floor(window.innerHeight * ratio);
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   }
 
-  function drawHeart(x, y, size, color) {
+  function drawHeart(x, y, size, color, alpha = 1, rotation = 0) {
     ctx.save();
     ctx.translate(x, y);
+    ctx.rotate(rotation);
     ctx.scale(size / 18, size / 18);
     ctx.beginPath();
     ctx.moveTo(0, 6);
     ctx.bezierCurveTo(-18, -8, -8, -24, 0, -12);
     ctx.bezierCurveTo(8, -24, 18, -8, 0, 6);
     ctx.fillStyle = color;
-    ctx.globalAlpha = 0.18 + size / 70;
+    ctx.globalAlpha = alpha;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = Math.max(3, size * 1.2);
     ctx.fill();
     ctx.restore();
   }
 
-  function animate() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const scrollShift = window.__coupleScrollY || 0;
-    particles.forEach((particle) => {
-      particle.y -= particle.speed / window.innerHeight;
-      particle.sway += 0.015;
-      if (particle.y < -0.05) {
-        Object.assign(particle, createParticle(), { y: 1.05 });
-      }
-      const x = particle.x * window.innerWidth + Math.sin(particle.sway) * 18 + scrollShift * particle.depth * 0.012;
-      const y = particle.y * window.innerHeight + scrollShift * particle.depth * 0.06;
-      drawHeart(x, y, particle.size, particle.color);
-    });
-    requestAnimationFrame(animate);
+  function drawDot(x, y, size, color, alpha = 1) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = Math.max(2, size * 1.1);
+    ctx.beginPath();
+    ctx.arc(0, 0, Math.max(1, size * 0.5), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
+  function drawStar(x, y, size, color, alpha = 1, rotation = 0) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+    ctx.fillStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = Math.max(2, size);
+    ctx.beginPath();
+    const points = 5;
+    for (let index = 0; index < points * 2; index++) {
+      const angle = (Math.PI / points) * index - Math.PI / 2;
+      const radius = index % 2 === 0 ? size : size * 0.45;
+      const px = Math.cos(angle) * radius;
+      const py = Math.sin(angle) * radius;
+      if (index === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawGlowOrb(orb, now) {
+    const phase = now / orb.period + orb.phase;
+    const x = window.innerWidth * (orb.x + Math.sin(phase) * orb.driftX);
+    const y = window.innerHeight * (orb.y + Math.cos(phase * 0.88) * orb.driftY);
+    const radius = orb.radius * (1 + Math.sin(phase * 0.62) * 0.05);
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0, orb.inner);
+    gradient.addColorStop(0.45, orb.mid);
+    gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawParticle(particle, x, y, now) {
+    const wobble = Math.sin(now / 420 + particle.twinkle) * (particle.kind === "heart" ? 2 : 1);
+    const alpha = Math.max(0, Math.min(1, particle.alpha * (particle.burst ? Math.max(0, 1 - particle.age / particle.life) : 1)));
+    const size = particle.size + wobble;
+    if (particle.kind === "dot") {
+      drawDot(x, y, size, particle.color, alpha);
+      return;
+    }
+    if (particle.kind === "star") {
+      drawStar(x, y, size, particle.color, alpha, particle.rotation);
+      return;
+    }
+    drawHeart(x, y, size, particle.color, alpha, particle.rotation);
+  }
+
+  function resetParticle(particle, options = {}) {
+    Object.assign(particle, createParticle(options));
+    return particle;
+  }
+
+  function spawnBurstParticle(clientX, clientY) {
+    const burst = createParticle({
+      x: clientX / window.innerWidth,
+      y: clientY / window.innerHeight,
+      kind: "heart",
+      burst: true,
+      size: 6 + Math.random() * 5,
+      alpha: 0.34 + Math.random() * 0.16,
+      life: 720 + Math.random() * 420,
+      vx: (Math.random() - 0.5) * 0.00028,
+      vy: -(0.000085 + Math.random() * 0.00009)
+    });
+    const slot = particles.findIndex((item) => !item.burst);
+    if (slot >= 0) {
+      particles[slot] = burst;
+    } else if (particles.length < (isMobile ? 36 : 84)) {
+      particles.push(burst);
+    } else {
+      particles[particles.length - 1] = burst;
+    }
+    if (!running) start();
+  }
+
+  function advanceParticle(particle, dt) {
+    particle.age += dt;
+    particle.x += particle.vx * dt;
+    particle.y += particle.vy * dt;
+    particle.sway += particle.swaySpeed * dt;
+    particle.rotation += particle.spin * dt;
+
+    if (particle.burst) {
+      particle.alpha = Math.max(0, particle.alpha);
+      if (particle.age >= particle.life || particle.y < -0.12) {
+        resetParticle(particle, { y: 1.06 });
+      }
+      return;
+    }
+
+    if (particle.x < -0.12 || particle.x > 1.12 || particle.y < -0.12) {
+      resetParticle(particle, { y: 1.08 });
+      return;
+    }
+  }
+
+  function animate(now = 0) {
+    if (!running || document.hidden) {
+      stop();
+      return;
+    }
+    const dt = lastFrameTime ? Math.min(40, now - lastFrameTime) : 16;
+    lastFrameTime = now;
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    drawGlowOrb(glowOrbs[0], now);
+    drawGlowOrb(glowOrbs[1], now);
+    drawGlowOrb(glowOrbs[2], now);
+    const scrollShift = window.__coupleScrollY || 0;
+    particles.forEach((particle) => {
+      advanceParticle(particle, dt);
+      const drift = Math.sin(particle.sway) * (particle.kind === "heart" ? 16 : 8);
+      const lift = Math.cos(particle.sway * 0.66) * (particle.kind === "heart" ? 9 : 5);
+      const x = particle.x * window.innerWidth + drift + scrollShift * particle.depth * 0.012;
+      const y = particle.y * window.innerHeight + lift + scrollShift * particle.depth * 0.05;
+      drawParticle(particle, x, y, now);
+    });
+    animationFrame = requestAnimationFrame(animate);
+  }
+
+  function start() {
+    if (running || reduceMotion) return;
+    resize();
+    running = true;
+    lastFrameTime = 0;
+    animationFrame = requestAnimationFrame(animate);
+  }
+
+  function stop() {
+    running = false;
+    if (animationFrame !== null) {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+    }
+  }
+
+  ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
   resize();
   window.addEventListener("resize", resize);
-  animate();
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) stop();
+    else start();
+  });
+  window.addEventListener("pointerdown", (event) => {
+    if (reduceMotion) return;
+    if (typeof event.clientX !== "number" || typeof event.clientY !== "number") return;
+    spawnBurstParticle(event.clientX, event.clientY);
+  }, { passive: true });
+  window.__coupleSkyCanvas = { start, stop, spawnBurstParticle };
+  start();
 }
 
 function initHomeMusic() {
-  if (page !== "home" || !homeMusic) return;
-  homeMusic.loop = true;
-  homeMusic.preload = "auto";
-  const tryPlay = () => {
-    const play = homeMusic.play();
-    if (play && typeof play.catch === "function") play.catch(() => {});
-  };
-  tryPlay();
-  ["pointerdown", "touchstart", "keydown"].forEach((eventName) => {
-    window.addEventListener(eventName, tryPlay, { once: true, passive: true });
-  });
+  initPageMusic(homeMusic, "home");
+}
+
+function initStoryMusic() {
+  initPageMusic(storyMusic, "story", 1, 1.2);
 }
 
 function initAlbumMusic() {
-  if (page !== "album" || !albumMusic) return;
-  albumMusic.loop = true;
-  albumMusic.preload = "auto";
-  albumMusic.playbackRate = 1.1;
+  initPageMusic(albumMusic, "album", 1.1);
+}
 
+function initNotesMusic() {
+  initPageMusic(notesMusic, "notes");
+}
+
+function initTravelMusic() {
+  initPageMusic(travelMusic, "travel");
+}
+
+function initWishesMusic() {
+  initPageMusic(wishesMusic, "wishes");
+}
+
+function initPageMusic(music, pageName, playbackRate = 1, volumeBoost = 1) {
+  if (page !== pageName || !music) return;
+  music.loop = true;
+  music.preload = "auto";
+  music.playbackRate = playbackRate;
+  configureMusicVolume(music, volumeBoost);
+  try {
+    music.load();
+  } catch {
+    // Some browsers can ignore eager audio loading before user interaction.
+  }
+
+  let started = false;
   const tryPlay = () => {
-    albumMusic.playbackRate = 1.1;
-    const play = albumMusic.play();
-    if (play && typeof play.catch === "function") play.catch(() => {});
+    if (started) return;
+    started = true;
+    const resume = music._audioContext?.state === "suspended"
+      ? music._audioContext.resume().catch(() => {})
+      : Promise.resolve();
+    resume.then(() => {
+      const play = music.play();
+      if (play && typeof play.catch === "function") {
+        play.catch(() => {
+          started = false;
+        });
+      }
+    });
   };
 
-  tryPlay();
-  ["pointerdown", "touchstart", "keydown"].forEach((eventName) => {
-    window.addEventListener(eventName, tryPlay, { once: true, passive: true });
-  });
+  document.addEventListener("pointerdown", tryPlay, { once: true, passive: true });
+  document.addEventListener("keydown", tryPlay, { once: true, passive: true });
   window.addEventListener("pagehide", () => {
-    albumMusic.pause();
-    albumMusic.removeAttribute("src");
-    albumMusic.load();
+    music.pause();
   }, { once: true });
+}
+
+function configureMusicVolume(music, volumeBoost = 1) {
+  if (!music) return;
+  const boost = Math.max(1, Number(volumeBoost) || 1);
+  if (boost <= 1) {
+    music.volume = 1;
+    return;
+  }
+
+  music.volume = 1;
+  if (music.dataset.gainBoost === String(boost)) return;
+  music.dataset.gainBoost = String(boost);
+
+  try {
+    if (!window.AudioContext && !window.webkitAudioContext) {
+      return;
+    }
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    const audioContext = new AudioContextClass();
+    const source = audioContext.createMediaElementSource(music);
+    const gain = audioContext.createGain();
+    gain.gain.value = boost;
+    source.connect(gain);
+    gain.connect(audioContext.destination);
+    music._audioContext = audioContext;
+    music._audioGain = gain;
+  } catch {
+    // Browsers that block Web Audio wiring still fall back to normal volume.
+  }
 }
