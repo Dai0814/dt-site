@@ -1,3 +1,4 @@
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from email.utils import formatdate, parsedate_to_datetime
 import json
@@ -5,12 +6,8 @@ import os
 import secrets
 import tempfile
 import time
-from datetime import datetime, timezone
 from urllib.parse import parse_qs, quote, urlparse
-from urllib.request import Request as UrlRequest, urlopen
-
-import requests
-from flask import Flask, abort, jsonify, make_response, request, send_from_directory
+from urllib.request import Request, urlopen
 
 
 ROOT = Path(__file__).resolve().parent
@@ -22,24 +19,12 @@ PORT = int(os.environ.get("PORT", "5500"))
 MAX_BODY_BYTES = 30 * 1024 * 1024
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
 EDITOR_TOKENS = set()
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
-SUPABASE_SERVICE_ROLE_KEY = (
-    os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    or os.environ.get("SUPABASE_SERVICE_KEY")
-    or ""
-)
-SUPABASE_TABLE = os.environ.get("SUPABASE_TABLE", "site_state")
-SUPABASE_STATE_ID = os.environ.get("SUPABASE_STATE_ID", "main")
-SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "uploads")
-USE_SUPABASE = bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)
 IMAGE_CONTENT_TYPES = {
     "image/jpeg": "jpg",
     "image/png": "png",
     "image/webp": "webp",
     "image/gif": "gif",
 }
-
-app = Flask(__name__, static_folder=None)
 
 DEFAULT_STATE = {
     "nameA": "D",
@@ -121,16 +106,7 @@ def normalize_state(raw):
     return state
 
 
-def supabase_headers(extra=None):
-    headers = {
-        "apikey": SUPABASE_SERVICE_ROLE_KEY,
-        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-    }
-    headers.update(extra or {})
-    return headers
-
-
-def read_local_state():
+def read_state():
     if not STATE_FILE.exists():
         return normalize_state({})
 
@@ -141,71 +117,8 @@ def read_local_state():
         return normalize_state({})
 
 
-def write_local_state(state):
-    DATA_DIR.mkdir(exist_ok=True)
-    fd, temp_name = tempfile.mkstemp(prefix="site-state-", suffix=".json", dir=DATA_DIR)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as file:
-            json.dump(state, file, ensure_ascii=False, indent=2)
-        os.replace(temp_name, STATE_FILE)
-    finally:
-        if os.path.exists(temp_name):
-            os.remove(temp_name)
-
-    return state
-
-
-def read_supabase_state():
-    response = requests.get(
-        f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}",
-        params={
-            "id": f"eq.{SUPABASE_STATE_ID}",
-            "select": "data",
-            "limit": "1",
-        },
-        headers=supabase_headers(),
-        timeout=12,
-    )
-    response.raise_for_status()
-    rows = response.json()
-    if rows and isinstance(rows[0].get("data"), dict):
-        return normalize_state(rows[0]["data"])
-    return normalize_state({})
-
-
-def write_supabase_state(state):
-    payload = {
-        "id": SUPABASE_STATE_ID,
-        "data": state,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
-    response = requests.post(
-        f"{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}",
-        params={"on_conflict": "id"},
-        headers=supabase_headers({
-            "Content-Type": "application/json",
-            "Prefer": "resolution=merge-duplicates,return=representation",
-        }),
-        json=payload,
-        timeout=12,
-    )
-    response.raise_for_status()
-    rows = response.json()
-    if rows and isinstance(rows[0].get("data"), dict):
-        return normalize_state(rows[0]["data"])
-    return state
-
-
-def read_state():
-    if USE_SUPABASE:
-        try:
-            return read_supabase_state()
-        except requests.RequestException as exc:
-            print(f"Supabase state read failed, falling back to local file: {exc}")
-    return read_local_state()
-
-
 def write_state(state):
+    DATA_DIR.mkdir(exist_ok=True)
     existing = read_state()
     if not isinstance(state, dict):
         state = {}
@@ -218,13 +131,16 @@ def write_state(state):
     state = normalize_state(state)
     state["updatedAt"] = str(int(time.time() * 1000))
 
-    if USE_SUPABASE:
-        try:
-            return write_supabase_state(state)
-        except requests.RequestException as exc:
-            print(f"Supabase state write failed, falling back to local file: {exc}")
+    fd, temp_name = tempfile.mkstemp(prefix="site-state-", suffix=".json", dir=DATA_DIR)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            json.dump(state, file, ensure_ascii=False, indent=2)
+        os.replace(temp_name, STATE_FILE)
+    finally:
+        if os.path.exists(temp_name):
+            os.remove(temp_name)
 
-    return write_local_state(state)
+    return state
 
 
 def state_updated_at_ms(state):
@@ -276,7 +192,7 @@ def geocode_place(path):
         "https://nominatim.openstreetmap.org/search"
         f"?format=json&limit=1&countrycodes=cn&accept-language=zh-CN&q={quote(query)}"
     )
-    geo_request = UrlRequest(
+    request = Request(
         url,
         headers={
             "Accept": "application/json",
@@ -285,7 +201,7 @@ def geocode_place(path):
     )
 
     try:
-        with urlopen(geo_request, timeout=8) as response:
+        with urlopen(request, timeout=8) as response:
             results = json.loads(response.read().decode("utf-8"))
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
@@ -311,207 +227,183 @@ def geocode_place(path):
     }
 
 
-def json_response(payload, status=200, headers=None):
-    response = make_response(json.dumps(payload, ensure_ascii=False), status)
-    response.headers["Content-Type"] = "application/json; charset=utf-8"
-    for key, value in (headers or {}).items():
-        if value:
-            response.headers[key] = value
-    return response
+class Handler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=str(ROOT), **kwargs)
 
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
 
-def json_error(message, status):
-    return json_response({"ok": False, "error": message}, status=status)
+    def do_GET(self):
+        if self.path.startswith("/api/state"):
+            authorized = self.is_editor_authorized()
+            state = read_state()
+            etag = state_etag(state, authorized)
+            last_modified = state_last_modified(state)
+            if request_is_not_modified(self.headers, etag, last_modified):
+                self.send_response(304)
+                if etag:
+                    self.send_header("ETag", etag)
+                if last_modified:
+                    self.send_header("Last-Modified", last_modified)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
 
+            if not authorized:
+                state.pop("accessCode", None)
+            state.pop("editCode", None)
+            self.send_json(state, headers={
+                "ETag": etag,
+                "Last-Modified": last_modified,
+            })
+            return
+        if self.path.startswith("/data/"):
+            self.send_error(404)
+            return
+        if self.path.startswith("/api/health"):
+            self.send_json({"ok": True})
+            return
+        if self.path.startswith("/api/geocode"):
+            self.send_json(geocode_place(self.path))
+            return
+        super().do_GET()
 
-def is_editor_authorized():
-    token = request.headers.get("X-Edit-Token", "")
-    return bool(token) and token in EDITOR_TOKENS
+    def do_POST(self):
+        if self.path.startswith("/api/login"):
+            self.authenticate_site()
+            return
 
+        if self.path.startswith("/api/auth"):
+            self.authenticate_editor()
+            return
 
-def read_json_body(max_bytes):
-    length = request.content_length or 0
-    if length > max_bytes:
-        return None, json_error("Request is too large", 413)
+        if self.path.startswith("/api/images"):
+            self.upload_image()
+            return
 
-    try:
-        payload = request.get_json(silent=False) if length else {}
-    except Exception:
-        return None, json_error("Invalid JSON", 400)
+        if not self.path.startswith("/api/state"):
+            self.send_error(404)
+            return
 
-    if payload is None:
-        payload = {}
-    if not isinstance(payload, dict):
-        return None, json_error("Invalid JSON", 400)
-    return payload, None
+        if not self.is_editor_authorized():
+            self.send_json({"ok": False, "error": "editor authorization required"}, status=401)
+            return
 
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length > MAX_BODY_BYTES:
+            self.send_error(413, "State is too large")
+            return
 
-def save_local_image(name, data):
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    target = UPLOAD_DIR / name
-    with target.open("wb") as file:
-        file.write(data)
-    return f"assets/uploads/{name}"
+        try:
+            body = self.rfile.read(length).decode("utf-8")
+            payload = json.loads(body or "{}")
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self.send_error(400, "Invalid JSON")
+            return
 
+        state = write_state(payload)
+        self.send_json(state, headers={
+            "ETag": state_etag(state, True),
+            "Last-Modified": state_last_modified(state),
+        })
 
-def save_supabase_image(name, content_type, data):
-    object_path = f"images/{name}"
-    response = requests.post(
-        f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{object_path}",
-        headers=supabase_headers({
-            "Content-Type": content_type,
-            "x-upsert": "false",
-        }),
-        data=data,
-        timeout=30,
-    )
-    response.raise_for_status()
-    return f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{object_path}"
+    def is_editor_authorized(self):
+        token = self.headers.get("X-Edit-Token", "")
+        return bool(token) and token in EDITOR_TOKENS
 
+    def authenticate_editor(self):
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length > 4096:
+            self.send_error(413, "Request is too large")
+            return
 
-@app.after_request
-def add_no_store_headers(response):
-    response.headers["Cache-Control"] = "no-store"
-    return response
+        try:
+            body = self.rfile.read(length).decode("utf-8")
+            code = str(json.loads(body or "{}").get("code", "")).strip()
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self.send_error(400, "Invalid JSON")
+            return
 
+        if not secrets.compare_digest(code, str(read_state()["editCode"])):
+            self.send_json({"ok": False, "error": "invalid editor password"}, status=401)
+            return
 
-@app.get("/api/health")
-def health():
-    return jsonify({"ok": True, "storage": "supabase" if USE_SUPABASE else "local"})
+        token = secrets.token_urlsafe(32)
+        EDITOR_TOKENS.add(token)
+        self.send_json({"ok": True, "token": token})
 
+    def authenticate_site(self):
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length > 4096:
+            self.send_error(413, "Request is too large")
+            return
 
-@app.get("/api/state")
-def get_state():
-    authorized = is_editor_authorized()
-    state = read_state()
-    etag = state_etag(state, authorized)
-    last_modified = state_last_modified(state)
-    if request_is_not_modified(request.headers, etag, last_modified):
-        response = make_response("", 304)
-        if etag:
-            response.headers["ETag"] = etag
-        if last_modified:
-            response.headers["Last-Modified"] = last_modified
-        return response
+        try:
+            body = self.rfile.read(length).decode("utf-8")
+            code = str(json.loads(body or "{}").get("code", "")).strip()
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self.send_error(400, "Invalid JSON")
+            return
 
-    if not authorized:
-        state.pop("accessCode", None)
-    state.pop("editCode", None)
-    return json_response(state, headers={
-        "ETag": etag,
-        "Last-Modified": last_modified,
-    })
+        if not secrets.compare_digest(code, str(read_state()["accessCode"])):
+            self.send_json({"ok": False, "error": "invalid access password"}, status=401)
+            return
 
+        self.send_json({"ok": True})
 
-@app.post("/api/state")
-def post_state():
-    if not is_editor_authorized():
-        return json_error("editor authorization required", 401)
+    def upload_image(self):
+        if not self.is_editor_authorized():
+            self.send_json({"ok": False, "error": "editor authorization required"}, status=401)
+            return
 
-    payload, error = read_json_body(MAX_BODY_BYTES)
-    if error:
-        return error
+        content_type = self.headers.get("Content-Type", "").split(";")[0].strip().lower()
+        extension = IMAGE_CONTENT_TYPES.get(content_type)
+        if not extension:
+            self.send_json({"ok": False, "error": "unsupported image type"}, status=415)
+            return
 
-    state = write_state(payload)
-    return json_response(state, headers={
-        "ETag": state_etag(state, True),
-        "Last-Modified": state_last_modified(state),
-    })
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length <= 0:
+            self.send_error(400, "Image is empty")
+            return
+        if length > MAX_IMAGE_BYTES:
+            self.send_error(413, "Image is too large")
+            return
 
+        data = self.rfile.read(length)
+        if len(data) != length:
+            self.send_error(400, "Invalid image body")
+            return
 
-@app.post("/api/auth")
-def authenticate_editor():
-    payload, error = read_json_body(4096)
-    if error:
-        return error
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        name = f"{int(time.time() * 1000)}-{secrets.token_urlsafe(8)}.{extension}"
+        target = UPLOAD_DIR / name
+        with target.open("wb") as file:
+            file.write(data)
 
-    code = str(payload.get("code", "")).strip()
-    if not secrets.compare_digest(code, str(read_state()["editCode"])):
-        return json_error("invalid editor password", 401)
+        self.send_json({
+            "ok": True,
+            "src": f"assets/uploads/{name}",
+            "bytes": len(data),
+        })
 
-    token = secrets.token_urlsafe(32)
-    EDITOR_TOKENS.add(token)
-    return jsonify({"ok": True, "token": token})
-
-
-@app.post("/api/login")
-def authenticate_site():
-    payload, error = read_json_body(4096)
-    if error:
-        return error
-
-    code = str(payload.get("code", "")).strip()
-    if not secrets.compare_digest(code, str(read_state()["accessCode"])):
-        return json_error("invalid access password", 401)
-
-    return jsonify({"ok": True})
-
-
-@app.post("/api/images")
-def upload_image():
-    if not is_editor_authorized():
-        return json_error("editor authorization required", 401)
-
-    content_type = request.headers.get("Content-Type", "").split(";")[0].strip().lower()
-    extension = IMAGE_CONTENT_TYPES.get(content_type)
-    if not extension:
-        return json_error("unsupported image type", 415)
-
-    length = request.content_length or 0
-    if length <= 0:
-        return json_error("Image is empty", 400)
-    if length > MAX_IMAGE_BYTES:
-        return json_error("Image is too large", 413)
-
-    data = request.get_data(cache=False)
-    if not data:
-        return json_error("Image is empty", 400)
-    if len(data) > MAX_IMAGE_BYTES:
-        return json_error("Image is too large", 413)
-
-    name = f"{int(time.time() * 1000)}-{secrets.token_urlsafe(8)}.{extension}"
-    try:
-        src = save_supabase_image(name, content_type, data) if USE_SUPABASE else save_local_image(name, data)
-    except requests.RequestException as exc:
-        print(f"Supabase image upload failed, falling back to local file: {exc}")
-        src = save_local_image(name, data)
-
-    return jsonify({
-        "ok": True,
-        "src": src,
-        "bytes": len(data),
-    })
-
-
-@app.get("/api/geocode")
-def geocode():
-    return jsonify(geocode_place(request.full_path))
-
-
-@app.route("/data/<path:_path>")
-def hide_data_files(_path):
-    abort(404)
-
-
-@app.route("/")
-def serve_home():
-    return send_from_directory(ROOT, "index.html")
-
-
-@app.route("/<path:path>")
-def serve_static(path):
-    if path.startswith("api/") or path.startswith("data/"):
-        abort(404)
-
-    target = (ROOT / path).resolve()
-    if not target.is_relative_to(ROOT) or not target.exists() or target.is_dir():
-        abort(404)
-
-    return send_from_directory(ROOT, path)
+    def send_json(self, payload, status=200, headers=None):
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        for key, value in (headers or {}).items():
+            if value:
+                self.send_header(key, value)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
 
 if __name__ == "__main__":
     DATA_DIR.mkdir(exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"Serving D&T site on http://127.0.0.1:{PORT}/")
-    app.run(host=HOST, port=PORT)
+    server.serve_forever()
