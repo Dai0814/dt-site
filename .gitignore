@@ -1,5 +1,8 @@
 
 README.md
+.env
+.env.*
+!.env.example
 __pycache__/
 .chrome-check*/
 .edge-horizontal-check/

@@ -16,6 +16,7 @@ const defaults = {
     { x: 50, y: 50 },
     { x: 50, y: 50 }
   ],
+  photoHashes: ["", "", ""],
   photoEntries: [],
   travelEntries: [
     { id: "travel-beijing", place: "\u5317\u4eac", status: "visited", note: "\u628a\u7b2c\u4e00\u9897\u661f\u6807\u7559\u7ed9\u4e00\u8d77\u60f3\u5ff5\u7684\u5730\u65b9\u3002", photo: "", x: 70, y: 45 },
@@ -37,6 +38,7 @@ const defaults = {
 const storageKey = "couple-home-state";
 const authKey = "couple-home-auth";
 const editTokenKey = "couple-home-edit-token";
+const editUploadCodeKey = "couple-home-edit-upload-code";
 const guestKey = "couple-home-guest";
 const capsuleDismissedKey = "couple-home-dismissed-capsules";
 const capsuleNotifiedKey = "couple-home-notified-capsules";
@@ -51,6 +53,8 @@ let staticStateMode = false;
 const page = document.body.dataset.page;
 const state = { ...defaults };
 const editableDefaults = {};
+const imageHashToSrc = new Map();
+const imageSrcToHash = new Map();
 let lastPersistedStateSignature = "";
 const entryFilterState = {
   story: { query: "", month: "" },
@@ -414,6 +418,7 @@ function normalizeState(value) {
     wishes: Array.isArray(next.wishes) ? next.wishes.map(normalizeWish).filter(Boolean) : defaults.wishes,
     photos: Array.isArray(next.photos) ? next.photos.concat(defaults.photos).slice(0, 3) : defaults.photos,
     photoPositions: normalizePhotoPositions(next.photoPositions),
+    photoHashes: normalizePhotoHashes(next.photoHashes),
     photoEntries: Array.isArray(next.photoEntries) ? next.photoEntries.map(normalizePhotoEntry).filter(Boolean) : defaults.photoEntries,
     travelEntries: Array.isArray(next.travelEntries) ? next.travelEntries.map(normalizeTravelEntry).filter(Boolean) : defaults.travelEntries,
     contentEntries: normalizeContentEntries(next.contentEntries),
@@ -448,6 +453,7 @@ function normalizeTravelEntry(entry) {
     status: travelStatusLabels[entry.status] ? entry.status : "visited",
     note: String(entry.note || ""),
     photo: String(entry.photo || ""),
+    photoHash: normalizeImageHash(entry.photoHash || entry.imageHash),
     position: normalizePhotoPosition(entry.position),
     x: Math.max(4, Math.min(96, x)),
     y: Math.max(4, Math.min(96, y)),
@@ -478,6 +484,7 @@ function normalizeContentEntry(type, entry, config = contentEntryConfig[type]) {
   // Timeline stories keep their media settings so newly added cards match the design after reload.
   if (type === "storyTimeline" || type === "story") {
     output.image = String(entry.image || "");
+    output.imageHash = normalizeImageHash(entry.imageHash || entry.photoHash);
     output.imageSize = ["small", "medium", "large"].includes(entry.imageSize) ? entry.imageSize : (config.defaults.imageSize || "medium");
     output.imagePosition = normalizePhotoPosition(entry.imagePosition);
   }
@@ -530,9 +537,20 @@ function normalizePhotoEntry(entry) {
     caption,
     content,
     photo,
+    photoHash: normalizeImageHash(entry.photoHash || entry.imageHash),
     position: normalizePhotoPosition(entry.position),
     updatedAt: entry.updatedAt || ""
   };
+}
+
+function normalizePhotoHashes(value) {
+  const hashes = Array.isArray(value) ? value : [];
+  return defaults.photoHashes.map((hash, index) => normalizeImageHash(hashes[index] || hash));
+}
+
+function normalizeImageHash(value) {
+  const hash = String(value || "").trim().toLowerCase();
+  return /^[a-f0-9]{64}$/.test(hash) ? hash : "";
 }
 
 function normalizePhotoPositions(value) {
@@ -643,7 +661,7 @@ async function loadState() {
 function hasMeaningfulLocalState(localState, rawValue) {
   if (!rawValue) return false;
 
-  return ["nameA", "nameB", "accessCode", "startDate", "startTime", "wishes", "photos", "photoPositions", "photoEntries", "travelEntries", "contentEntries", "capsules", "edits"].some((key) => {
+  return ["nameA", "nameB", "accessCode", "startDate", "startTime", "wishes", "photos", "photoPositions", "photoHashes", "photoEntries", "travelEntries", "contentEntries", "capsules", "edits"].some((key) => {
     return JSON.stringify(localState[key]) !== JSON.stringify(defaults[key]);
   });
 }
@@ -664,7 +682,7 @@ function mergeCapsules(primary, fallback) {
 }
 
 async function saveState() {
-  if (canEdit() && !staticStateMode) {
+  if (canEdit()) {
     await moveInlineImagesToUploads(state);
   }
 
@@ -728,7 +746,24 @@ function flushScheduledStateSave() {
   saveState().catch(() => {});
 }
 
-function exportStateFile() {
+async function exportStateFile() {
+  /*
+   * Keep exports lightweight once image storage is connected. Any legacy
+   * inline images are given one last chance to move through the configured
+   * image uploader before the JSON snapshot is created. With Supabase this
+   * will leave only the public image URL in the export; the binary photo
+   * remains safely in Storage.
+   */
+  if (canEdit()) {
+    try {
+      await moveInlineImagesToUploads(state);
+      await saveState();
+    } catch {
+      // Export must still work offline. In that case legacy inline images
+      // remain embedded so the backup is not silently incomplete.
+    }
+  }
+
   const exported = {
     ...normalizeState(state),
     updatedAt: String(Date.now())
@@ -839,6 +874,7 @@ function activateGuestModeFromUrl() {
   sessionStorage.setItem(guestKey, "yes");
   sessionStorage.setItem(authKey, "yes");
   sessionStorage.removeItem(editTokenKey);
+  sessionStorage.removeItem(editUploadCodeKey);
 }
 
 function setEditorMode(enabled) {
@@ -953,7 +989,7 @@ function renderTodayMemories() {
       </div>
       ${imageHtml}
       <h3>${escapeHtml(memory.title)}</h3>
-      <p>${escapeHtml(memory.text)}</p>
+      <p>${renderMultilineHtml(memory.text)}</p>
       ${memory.href ? `<span class="today-memory-link">\u53bb\u770b\u770b</span>` : ""}
     `;
     els.todayMemoryList.appendChild(card);
@@ -1361,7 +1397,7 @@ function renderWishes() {
     const text = document.createElement("span");
     text.className = "wish-body";
     const wishText = document.createElement("span");
-    wishText.innerHTML = sanitizeEditableHtml(wish.text);
+    wishText.innerHTML = renderMultilineHtml(wish.text);
     const wishStatus = document.createElement("span");
     wishStatus.className = wish.done ? "wish-status is-complete" : "wish-status";
     wishStatus.textContent = "\u5df2\u5b8c\u6210";
@@ -1450,6 +1486,7 @@ function initPhotos() {
       try {
         const index = Number(input.dataset.photo);
         state.photos[index] = await storeImageFile(file);
+        state.photoHashes[index] = getCachedImageHash(state.photos[index]) || "";
         state.photoPositions[index] = normalizePhotoPosition(state.photoPositions[index]);
         refreshPhotos();
         await saveState();
@@ -1520,7 +1557,7 @@ function openPhotoPreview(src, title = "", content = "") {
       <img src="${escapeAttribute(src)}" alt="${escapeAttribute(title || "照片预览")}">
       <div class="photo-preview-caption">
         <strong>${escapeHtml(title || "回忆照片")}</strong>
-        <span>${escapeHtml(content || "")}</span>
+        <span>${renderMultilineHtml(content || "")}</span>
       </div>
     </div>
   `;
@@ -1609,7 +1646,7 @@ function initAlbumPhotoForm() {
     const editingId = els.albumPhotoForm.dataset.editingId;
     const existing = editingId ? state.photoEntries.find((item) => item.id === editingId) : null;
     const caption = sanitizeEditableHtml(els.albumPhotoCaption.value.trim());
-    const content = sanitizeEditableHtml(els.albumPhotoContent?.value.trim() || "");
+    const content = sanitizeEditableHtml(normalizeMultilineInput(els.albumPhotoContent?.value || ""));
     const file = els.albumPhotoInput.files[0];
     const hasNewPhoto = Boolean(file);
     let photo = existing?.photo || "";
@@ -1625,6 +1662,7 @@ function initAlbumPhotoForm() {
       caption: caption || existing?.caption || "新的照片",
       content,
       photo,
+      photoHash: hasNewPhoto ? (getCachedImageHash(photo) || "") : normalizeImageHash(existing?.photoHash),
       position: hasNewPhoto ? normalizePhotoPosition() : normalizePhotoPosition(existing?.position),
       updatedAt: fromDatetimeLocal(document.getElementById("albumPhotoUpdatedAt")?.value) || Date.now()
     };
@@ -1695,7 +1733,7 @@ function renderPhotoEntries() {
     const position = normalizePhotoPosition(entry.position);
     card.innerHTML = `
       <img src="${escapeAttribute(entry.photo || "")}" alt="${escapeAttribute(entry.caption || "新增照片")}" style="object-position: ${position.x}% ${position.y}%;">
-      <span><b>${sanitizeEditableHtml(entry.caption || "新的照片")}</b><em>${sanitizeEditableHtml(entry.content || "")}</em></span>
+      <span><b>${sanitizeEditableHtml(entry.caption || "新的照片")}</b><em>${renderMultilineHtml(entry.content || "")}</em></span>
       <small class="module-edit-time">${entry.updatedAt ? `\u7F16\u8F91\u65F6\u95F4\uFF1A${formatEditTime(entry.updatedAt)}` : ""}</small>
       <div class="content-entry-actions photo-entry-actions">
         <button type="button" data-photo-entry-edit="${escapeAttribute(entry.id)}">\u7f16\u8f91</button>
@@ -1806,6 +1844,7 @@ function initTravelMap() {
       status: els.travelStatus.value,
       note: els.travelNote.value.trim(),
       photo: editingEntry?.photo || duplicateEntry?.photo || "",
+      photoHash: normalizeImageHash(editingEntry?.photoHash || duplicateEntry?.photoHash),
       position: normalizePhotoPosition(editingEntry?.position || duplicateEntry?.position),
       x: place.x,
       y: place.y,
@@ -1816,6 +1855,7 @@ function initTravelMap() {
     const file = els.travelPhoto.files[0];
     if (file) {
       entry.photo = await storeImageFile(file);
+      entry.photoHash = getCachedImageHash(entry.photo) || "";
     }
 
     state.travelEntries = [entry, ...state.travelEntries.filter((item) => {
@@ -2186,7 +2226,7 @@ function renderTravelMap() {
         <div class="travel-entry-body">
           <span>${travelStatusLabels[entry.status]}</span>
           <h3>${escapeHtml(displayName)}</h3>
-          <p>${escapeHtml(entry.note || "\u8fd8\u6ca1\u6709\u5199\u4e0b\u6587\u5b57\u3002")}</p>
+          <p>${renderMultilineHtml(entry.note || "\u8fd8\u6ca1\u6709\u5199\u4e0b\u6587\u5b57\u3002")}</p>
           <small class="travel-visit-date">${entry.visitDate ? `\u6765\u5230\u8fd9\u91cc\u7684\u65F6\u95F4\uFF1A${entry.visitDate}` : ""}</small>
           <div class="travel-entry-actions">
             <button type="button" data-travel-move="${escapeAttribute(entry.id)}" data-travel-direction="-1" ${index === 0 ? "disabled" : ""}>\u4e0a\u79fb</button>
@@ -2260,6 +2300,7 @@ function renderTravelMap() {
         const entry = state.travelEntries.find((item) => item.id === input.dataset.travelPhoto);
         if (!entry) return;
         entry.photo = await storeImageFile(file);
+        entry.photoHash = getCachedImageHash(entry.photo) || "";
         entry.position = normalizePhotoPosition(entry.position);
         entry.updatedAt = Date.now();
         renderTravelMap();
@@ -2409,8 +2450,9 @@ function readFileAsDataUrl(file) {
 }
 
 async function storeImageFile(file) {
+  const imageHash = await hashBlob(file);
   const blob = await prepareImageBlob(file);
-  return uploadImageBlob(blob);
+  return uploadImageBlob(blob, imageHash);
 }
 
 async function prepareImageBlob(file, options = {}) {
@@ -2480,24 +2522,87 @@ function dataUrlToBlob(value) {
   return new Blob([bytes], { type: match[1] });
 }
 
-async function uploadImageBlob(blob) {
+async function hashBlob(blob) {
+  if (!window.crypto?.subtle || !blob?.arrayBuffer) return "";
+  try {
+    const digest = await window.crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+    return Array.from(new Uint8Array(digest))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  } catch {
+    return "";
+  }
+}
+
+function rememberImageHash(hash, src) {
+  const normalizedHash = normalizeImageHash(hash);
+  const normalizedSrc = String(src || "");
+  if (!normalizedHash || !normalizedSrc) return;
+  imageHashToSrc.set(normalizedHash, normalizedSrc);
+  imageSrcToHash.set(normalizedSrc, normalizedHash);
+}
+
+function getCachedImageHash(src) {
+  return imageSrcToHash.get(String(src || "")) || "";
+}
+
+function findImageByHash(hash) {
+  const normalizedHash = normalizeImageHash(hash);
+  if (!normalizedHash) return "";
+  const cached = imageHashToSrc.get(normalizedHash);
+  if (cached) return cached;
+
+  const fixedIndex = normalizePhotoHashes(state.photoHashes).findIndex((value) => value === normalizedHash);
+  if (fixedIndex >= 0 && state.photos?.[fixedIndex]) {
+    rememberImageHash(normalizedHash, state.photos[fixedIndex]);
+    return state.photos[fixedIndex];
+  }
+
+  const searchObjects = [
+    ...(Array.isArray(state.photoEntries) ? state.photoEntries : []),
+    ...(Array.isArray(state.travelEntries) ? state.travelEntries : []),
+    ...Object.values(state.contentEntries || {}).flatMap((entries) => Array.isArray(entries) ? entries : [])
+  ];
+  const existing = searchObjects.find((entry) => {
+    return normalizeImageHash(entry?.photoHash || entry?.imageHash) === normalizedHash
+      && typeof (entry.photo || entry.image) === "string"
+      && !String(entry.photo || entry.image).startsWith("data:image/");
+  });
+  const src = existing ? String(existing.photo || existing.image || "") : "";
+  if (src) rememberImageHash(normalizedHash, src);
+  return src;
+}
+
+async function uploadImageBlob(blob, preferredHash = "") {
+  const imageHash = normalizeImageHash(preferredHash) || await hashBlob(blob);
+  const existingSrc = findImageByHash(imageHash);
+  if (existingSrc) return existingSrc;
+
   try {
     const response = await fetch(apiImagesUrl, {
       method: "POST",
       headers: {
         "Content-Type": blob.type || "image/jpeg",
-        "X-Edit-Token": sessionStorage.getItem(editTokenKey) || ""
+        "X-Edit-Token": sessionStorage.getItem(editTokenKey) || "",
+        "X-Edit-Code": sessionStorage.getItem(editUploadCodeKey) || "",
+        "X-Image-Hash": imageHash
       },
       body: blob
     });
     if (!response.ok) throw new Error("image upload failed");
     const payload = await response.json();
-    if (payload?.src) return String(payload.src);
+    if (payload?.src) {
+      const src = String(payload.src);
+      rememberImageHash(payload.imageHash || imageHash, src);
+      return src;
+    }
   } catch {
     // Static/offline copies cannot accept file uploads, so keep a compressed
     // inline image as a graceful fallback.
   }
-  return blobToDataUrl(blob);
+  const dataUrl = await blobToDataUrl(blob);
+  rememberImageHash(imageHash, dataUrl);
+  return dataUrl;
 }
 
 async function moveInlineImagesToUploads(target) {
@@ -2565,6 +2670,7 @@ function initForms() {
             sessionStorage.removeItem(guestKey);
             sessionStorage.setItem(authKey, "yes");
             sessionStorage.setItem(editTokenKey, payload.token);
+            sessionStorage.setItem(editUploadCodeKey, code);
             setEditorMode(true);
             const returnTo = sessionStorage.getItem("editor-return-to") || "index.html";
             sessionStorage.removeItem("editor-return-to");
@@ -2581,6 +2687,7 @@ function initForms() {
       // Static copies can be opened without the local API server. Use the
       // exported state so changed access codes keep working offline.
       if (!isEditorLogin && code === (state.accessCode || defaults.accessCode)) {
+        sessionStorage.removeItem(editUploadCodeKey);
         continueToHome();
         return;
       }
@@ -2591,6 +2698,7 @@ function initForms() {
         sessionStorage.removeItem(guestKey);
         sessionStorage.setItem(authKey, "yes");
         sessionStorage.setItem(editTokenKey, "offline-" + Date.now());
+        sessionStorage.setItem(editUploadCodeKey, code);
         setEditorMode(true);
         const returnTo = sessionStorage.getItem("editor-return-to") || "index.html";
         sessionStorage.removeItem("editor-return-to");
@@ -2679,6 +2787,7 @@ function initContentForms() {
       if (entry._imageFile) {
         try {
           entry.image = await storeImageFile(entry._imageFile);
+          entry.imageHash = getCachedImageHash(entry.image) || "";
           entry.imagePosition = form.dataset.currentImagePosition
             ? normalizePhotoPosition(JSON.parse(form.dataset.currentImagePosition))
             : normalizePhotoPosition();
@@ -2786,7 +2895,7 @@ function initCapsulePage() {
     event.preventDefault();
     if (!canEdit()) return;
     const title = String(form.elements.title?.value || "").trim();
-    const text = String(form.elements.text?.value || "").trim();
+    const text = normalizeMultilineInput(form.elements.text?.value || "");
     const unlockAt = fromDatetimeLocal(form.elements.unlockAt?.value);
     if (!title || !text || !unlockAt) {
       setCapsuleFormMessage(form, "请填写标题、信件内容和开启时间。");
@@ -3023,7 +3132,7 @@ function renderCapsules() {
   const capsules = [...(state.capsules || [])].sort((a, b) => a.unlockAt - b.unlockAt);
   list.innerHTML = "";
   if (!capsules.length) {
-    list.innerHTML = `<p class="content-empty">${canEdit() ? "还没有时间胶囊，写一封信给未来的 TA 吧。" : "这里还没有封存的信件。"}</p>`;
+    list.innerHTML = `<p class="content-empty">${canEdit() ? "还没有时间胶囊，写一封信给未来的 twc 吧。" : "这里还没有封存的信件。"}</p>`;
     return;
   }
   capsules.forEach((entry) => {
@@ -3034,7 +3143,7 @@ function renderCapsules() {
     const safeTitle = escapeHtml(entry.title || "写给未来的你");
     const date = escapeHtml(formatCapsuleDate(entry.unlockAt));
     card.innerHTML = unlocked
-      ? `<div class="capsule-card-head"><span class="capsule-status">已开启</span><time>${date}</time></div><h3>${safeTitle}</h3><div class="capsule-letter">${sanitizeEditableHtml(entry.text)}</div>${entry.updatedAt ? `<small class="module-edit-time">编辑时间：${escapeHtml(formatEditTime(entry.updatedAt))}</small>` : ""}${contentEntryActionsHtml(entry.id)}`
+      ? `<div class="capsule-card-head"><span class="capsule-status">已开启</span><time>${date}</time></div><h3>${safeTitle}</h3><div class="capsule-letter">${renderMultilineHtml(entry.text)}</div>${entry.updatedAt ? `<small class="module-edit-time">编辑时间：${escapeHtml(formatEditTime(entry.updatedAt))}</small>` : ""}${contentEntryActionsHtml(entry.id)}`
       : `<div class="capsule-lock" aria-hidden="true">&#128274;</div><div class="capsule-card-head"><span class="capsule-status">尚未开启</span><time>${date}</time></div><h3>${safeTitle}</h3><p class="capsule-locked-copy">这封信会在开启日与 TA 见面。</p>${contentEntryActionsHtml(entry.id)}`;
     card.querySelector("[data-content-edit]")?.addEventListener("click", () => editCapsule(entry.id));
     card.querySelector("[data-content-delete]")?.addEventListener("click", async () => {
@@ -3077,7 +3186,8 @@ function readContentEntryForm(type, form) {
   };
 
   config.fields.forEach((field) => {
-    entry[field] = sanitizeEditableHtml(String(form.elements[field]?.value || "").trim());
+    const value = String(form.elements[field]?.value || "");
+    entry[field] = sanitizeEditableHtml(field === "text" ? normalizeMultilineInput(value) : value.trim());
   });
 
   // A date input cannot represent older free-form story times. Preserve the
@@ -3231,21 +3341,21 @@ function createContentEntryCard(type, entry) {
       <time>${sanitizeEditableHtml(entry.time || config.defaults.time)}</time>
       <h3>${sanitizeEditableHtml(entry.title || config.defaults.title)}</h3>
       ${contentEntryImageHtml(entry)}
-      <p>${sanitizeEditableHtml(entry.text || config.defaults.text)}</p>
+      <p>${renderMultilineHtml(entry.text || config.defaults.text)}</p>
       ${contentEntryActionsHtml(entry.id)}
     `;
   } else if (type === "daily") {
     card.innerHTML = `
       <span>${sanitizeEditableHtml(entry.label || config.defaults.label)}</span>
       <h3>${sanitizeEditableHtml(entry.title || config.defaults.title)}</h3>
-      <p>${sanitizeEditableHtml(entry.text || config.defaults.text)}</p>
+      <p>${renderMultilineHtml(entry.text || config.defaults.text)}</p>
       ${contentEntryTimeHtml(entry)}
       ${contentEntryActionsHtml(entry.id)}
     `;
   } else if (type === "notes") {
     card.innerHTML = `
       <time>${sanitizeEditableHtml(formatNoteEntryDate(entry))}</time>
-      <p>${sanitizeEditableHtml(entry.text || config.defaults.text)}</p>
+      <p>${renderMultilineHtml(entry.text || config.defaults.text)}</p>
       ${contentEntryTimeHtml(entry)}
       ${contentEntryActionsHtml(entry.id)}
     `;
@@ -3259,7 +3369,7 @@ function createContentEntryCard(type, entry) {
         <time>${escapeHtml(formatStoryTimelineDate(entry.eventDate))}</time>
         <h3>${sanitizeEditableHtml(entry.title || config.defaults.title)}</h3>
         ${contentEntryImageHtml(entry)}
-        ${entry.text ? `<p>${sanitizeEditableHtml(entry.text)}</p>` : ""}
+        ${entry.text ? `<p>${renderMultilineHtml(entry.text)}</p>` : ""}
         ${contentEntryTimeHtml(entry)}
         ${contentEntryActionsHtml(entry.id)}
       </div>
@@ -3395,6 +3505,7 @@ function initNavigation() {
         setEditorMode(false);
         sessionStorage.removeItem(authKey);
         sessionStorage.removeItem(editTokenKey);
+        sessionStorage.removeItem(editUploadCodeKey);
         navigateWithTransition("index.html", 1);
         return;
       }
@@ -3402,6 +3513,7 @@ function initNavigation() {
         sessionStorage.removeItem(guestKey);
         sessionStorage.removeItem(authKey);
         sessionStorage.removeItem(editTokenKey);
+        sessionStorage.removeItem(editUploadCodeKey);
         navigateWithTransition("login.html", 1);
         return;
       }
@@ -3428,7 +3540,8 @@ function applyEditableContent() {
   document.querySelectorAll("[data-edit-key]").forEach((el) => {
     const key = el.dataset.editKey;
     const html = state.edits[key] ?? editableDefaults[key] ?? el.innerHTML;
-    el.innerHTML = sanitizeEditableHtml(html);
+    const isBodyText = el.matches("p, .hero-copy");
+    el.innerHTML = isBodyText ? renderMultilineHtml(html) : renderMultilineHtml(html, { indent: false });
   });
   refreshEditTimes();
 }
@@ -3557,7 +3670,7 @@ function openScopeEditor(scope) {
     if (!canEdit()) return;
     editor.panel.querySelectorAll("[data-field-key]").forEach((input) => {
       const key = input.dataset.fieldKey;
-      state.edits[key] = sanitizeEditableHtml(input.value.trim());
+      state.edits[key] = sanitizeEditableHtml(normalizeMultilineInput(input.value));
     });
     state.editTimes[scopeId] = Date.now();
     applyEditableContent();
@@ -3732,6 +3845,23 @@ function escapeHtml(value) {
 
 function escapeAttribute(value) {
   return escapeHtml(value).replaceAll("'", "&#39;");
+}
+
+function normalizeMultilineInput(value) {
+  return String(value || "").replace(/\r\n?/g, "\n").trim();
+}
+
+function renderMultilineHtml(value, options = {}) {
+  const normalized = normalizeMultilineInput(value);
+  if (!normalized) return "";
+  const lines = sanitizeEditableHtml(normalized).split("\n");
+  const shouldIndent = options.indent !== false;
+  if (!shouldIndent) return lines.join("<br>");
+
+  return lines.map((line) => {
+    const emptyClass = line ? "" : " is-empty";
+    return `<span class="multiline-indent-line${emptyClass}">${line}</span>`;
+  }).join("");
 }
 
 function sanitizeEditableHtml(value) {

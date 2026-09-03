@@ -1,12 +1,14 @@
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from email.utils import formatdate, parsedate_to_datetime
+import hashlib
 import json
 import os
 import secrets
 import tempfile
 import time
 from urllib.parse import parse_qs, quote, urlparse
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
@@ -19,6 +21,14 @@ PORT = int(os.environ.get("PORT", "5500"))
 MAX_BODY_BYTES = 30 * 1024 * 1024
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
 EDITOR_TOKENS = set()
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_SERVICE_ROLE_KEY = (
+    os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    or os.environ.get("SUPABASE_SERVICE_KEY")
+    or ""
+)
+SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET", "album-photos").strip("/")
+USE_SUPABASE_STORAGE = bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY and SUPABASE_BUCKET)
 IMAGE_CONTENT_TYPES = {
     "image/jpeg": "jpg",
     "image/png": "png",
@@ -227,6 +237,63 @@ def geocode_place(path):
     }
 
 
+def build_supabase_public_image_url(object_path):
+    return (
+        f"{SUPABASE_URL}/storage/v1/object/public/"
+        f"{quote(SUPABASE_BUCKET, safe='')}/{quote(object_path, safe='/')}"
+    )
+
+
+def upload_image_to_supabase(image_hash, extension, content_type, data):
+    """Upload an image to Supabase Storage when server environment is configured.
+
+    The service-role key is read only on the server and is never sent to the
+    browser. The returned URL is public because the album-photos bucket is
+    intentionally configured as a public bucket.
+    """
+    object_path = f"album/dedup/{image_hash}.{extension}"
+    public_url = build_supabase_public_image_url(object_path)
+    try:
+        exists_request = Request(public_url, method="HEAD")
+        with urlopen(exists_request, timeout=12) as response:
+            if 200 <= response.status < 300:
+                return public_url, True
+    except HTTPError as exc:
+        if exc.code != 404:
+            pass
+    except Exception:
+        pass
+
+    endpoint = (
+        f"{SUPABASE_URL}/storage/v1/object/"
+        f"{quote(SUPABASE_BUCKET, safe='')}/{quote(object_path, safe='/')}"
+    )
+    request = Request(
+        endpoint,
+        data=data,
+        method="POST",
+        headers={
+            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+            "Content-Type": content_type,
+            "x-upsert": "false",
+        },
+    )
+    try:
+        with urlopen(request, timeout=30) as response:
+            response.read()
+        return public_url, False
+    except HTTPError as exc:
+        detail = ""
+        try:
+            detail = exc.read().decode("utf-8", errors="ignore")
+        except Exception:
+            detail = ""
+        if exc.code in (400, 409) and any(word in detail.lower() for word in ("already", "exist", "duplicate")):
+            return public_url, True
+        raise
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -377,16 +444,35 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(400, "Invalid image body")
             return
 
-        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        name = f"{int(time.time() * 1000)}-{secrets.token_urlsafe(8)}.{extension}"
-        target = UPLOAD_DIR / name
-        with target.open("wb") as file:
-            file.write(data)
+        header_hash = self.headers.get("X-Image-Hash", "").strip().lower()
+        image_hash = header_hash if len(header_hash) == 64 and all(
+            character in "0123456789abcdef" for character in header_hash
+        ) else hashlib.sha256(data).hexdigest()
+        name = f"{image_hash}.{extension}"
+        src = ""
+        reused = False
+        if USE_SUPABASE_STORAGE:
+            try:
+                src, reused = upload_image_to_supabase(image_hash, extension, content_type, data)
+            except Exception:
+                # Keep local development usable if Supabase is unavailable.
+                src = ""
+
+        if not src:
+            UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+            target = UPLOAD_DIR / name
+            reused = target.exists()
+            with target.open("wb") as file:
+                file.write(data)
+            src = f"assets/uploads/{name}"
 
         self.send_json({
             "ok": True,
-            "src": f"assets/uploads/{name}",
+            "src": src,
             "bytes": len(data),
+            "storage": "supabase" if src.startswith(f"{SUPABASE_URL}/") else "local",
+            "imageHash": image_hash,
+            "reused": reused,
         })
 
     def send_json(self, payload, status=200, headers=None):

@@ -135,6 +135,23 @@
       min-height: 116px;
       padding-top: 12px;
       resize: vertical;
+      white-space: pre-wrap;
+    }
+
+    .custom-card p,
+    .photo-card em {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .multiline-indent-line {
+      display: block;
+      text-indent: 2em;
+      overflow-wrap: anywhere;
+    }
+
+    .multiline-indent-line.is-empty {
+      min-height: 1em;
     }
 
     input:focus, textarea:focus {
@@ -1027,7 +1044,7 @@
           <a class="card gateway-card" href="#daily" data-go="daily"><small>02</small><h3>日常</h3><p>记录每天的小事，早餐、散步、聊天和那些不起眼的开心。</p></a>
           <a class="card gateway-card" href="#notes" data-go="notes"><small>03</small><h3>碎碎念</h3><p>存放那些突然想说的话，短短一句也算认真想你。</p></a>
           <a class="card gateway-card" href="#travel" data-go="travel"><small>04</small><h3>旅行地图</h3><p>标记一起去过和想去的地方，把世界慢慢走成回忆。</p></a>
-          <a class="card gateway-card" href="#album" data-go="album"><small>05</small><h3>相册</h3><p>上传你们自己的照片，让页面变成专属回忆册。</p></a>
+          <a class="card gateway-card" href="#album" data-go="album"><small>05</small><h3>相册</h3><p>上传我们自己的照片，让页面变成专属回忆册。</p></a>
           <a class="card gateway-card" href="#wishes" data-go="wishes"><small>06</small><h3>愿望</h3><p>把想一起完成的事写下来，一件一件打勾。</p></a>
         </div>
         <h2 class="section-title">定制主页</h2>
@@ -1203,6 +1220,7 @@
         { x: 50, y: 50 },
         { x: 50, y: 50 }
       ],
+      photoHashes: ["", "", ""],
       customItems: {
         story: [],
         daily: [],
@@ -1256,11 +1274,15 @@
     const apiStateUrl = "/api/state";
     const apiAuthUrl = "/api/auth";
     const apiLoginUrl = "/api/login";
+    const apiImagesUrl = "/api/images";
     const staticStateUrl = "data/site-state.json";
     const editTokenKey = "dt-mobile-edit-token";
+    const editUploadCodeKey = "dt-mobile-edit-upload-code";
     const mobileEditingEnabled = true;
     const state = load();
     const editDefaults = {};
+    const imageHashToSrc = new Map();
+    const imageSrcToHash = new Map();
     let sharedStateSnapshot = {};
     let pendingSave = Promise.resolve();
     let lastRefreshAt = 0;
@@ -1327,6 +1349,7 @@
         wishes: Array.isArray(next.wishes) ? next.wishes : defaults.wishes,
         photos: Array.isArray(next.photos) ? next.photos.concat(defaults.photos).slice(0, 3) : defaults.photos,
         photoPositions: normalizePhotoPositions(next.photoPositions),
+        photoHashes: normalizePhotoHashes(next.photoHashes),
         contentEntries: normalizeContentEntries(next.contentEntries),
         travelEntries: Array.isArray(next.travelEntries) ? next.travelEntries : defaults.travelEntries,
         photoEntries: Array.isArray(next.photoEntries) ? next.photoEntries : defaults.photoEntries,
@@ -1351,6 +1374,16 @@
     function normalizePhotoPositions(value) {
       const positions = Array.isArray(value) ? value : [];
       return defaults.photoPositions.map((position, index) => normalizePhotoPosition(positions[index] || position));
+    }
+
+    function normalizePhotoHashes(value) {
+      const hashes = Array.isArray(value) ? value : [];
+      return defaults.photoHashes.map((hash, index) => normalizeImageHash(hashes[index] || hash));
+    }
+
+    function normalizeImageHash(value) {
+      const hash = String(value || "").trim().toLowerCase();
+      return /^[a-f0-9]{64}$/.test(hash) ? hash : "";
     }
 
     function normalizePhotoPosition(value) {
@@ -1408,6 +1441,9 @@
     }
 
     async function persistState() {
+      if (getEditAuth() && !getGuestAuth()) {
+        await moveInlineImagesToUploads(state);
+      }
       state.updatedAt = String(Date.now());
       writeLocalState();
       if (!getEditAuth() || getGuestAuth()) return;
@@ -1525,6 +1561,7 @@
         wishes: Array.isArray(state.wishes) ? state.wishes : [],
         photos: Array.isArray(state.photos) ? state.photos.concat(defaults.photos).slice(0, 3) : defaults.photos,
         photoPositions: normalizePhotoPositions(state.photoPositions),
+        photoHashes: normalizePhotoHashes(state.photoHashes),
         contentEntries,
         travelEntries: (state.customItems.travel || []).map(mobileTravelToShared).filter(Boolean),
         photoEntries: (state.customItems.album || []).map((entry) => ({
@@ -1627,6 +1664,7 @@
       if (!value) {
         setEditAuth(false);
         clearEditToken();
+        clearEditUploadCode();
       }
     }
 
@@ -1649,7 +1687,10 @@
       } catch {
         // Keep the in-memory value when browser storage is blocked.
       }
-      if (value) setEditAuth(false);
+      if (value) {
+        setEditAuth(false);
+        clearEditUploadCode();
+      }
       updateEditAccess();
     }
 
@@ -1680,6 +1721,7 @@
         } else {
           sessionStorage.removeItem("dt-mobile-edit-auth");
           clearEditToken();
+          clearEditUploadCode();
         }
       } catch {
         // Keep the in-memory value when browser storage is blocked.
@@ -1706,6 +1748,30 @@
     function clearEditToken() {
       try {
         sessionStorage.removeItem(editTokenKey);
+      } catch {
+        // Ignore storage failures.
+      }
+    }
+
+    function getEditUploadCode() {
+      try {
+        return sessionStorage.getItem(editUploadCodeKey) || "";
+      } catch {
+        return "";
+      }
+    }
+
+    function setEditUploadCode(code) {
+      try {
+        if (code) sessionStorage.setItem(editUploadCodeKey, code);
+      } catch {
+        // Uploads can still fall back to inline images when storage is blocked.
+      }
+    }
+
+    function clearEditUploadCode() {
+      try {
+        sessionStorage.removeItem(editUploadCodeKey);
       } catch {
         // Ignore storage failures.
       }
@@ -1792,6 +1858,7 @@
         alert("编辑暗号不对，再试一次。");
         return;
       }
+      setEditUploadCode(code.trim());
       setEditAuth(true);
       await refreshSharedState({ force: true });
     }
@@ -1931,7 +1998,7 @@
       document.querySelector("#editorSave").addEventListener("click", async () => {
         if (!activeModule) return;
         editorFields.querySelectorAll("[data-field]").forEach((textarea) => {
-          state.edits[textarea.dataset.field] = sanitize(textarea.value.trim());
+          state.edits[textarea.dataset.field] = sanitize(normalizeMultilineInput(textarea.value));
         });
         state.editTimes[getModuleId(activeModule)] = Date.now();
         await save();
@@ -1971,7 +2038,8 @@
     function applyEdits() {
       document.querySelectorAll("[data-edit]").forEach((el) => {
         const html = state.edits[el.dataset.edit] ?? editDefaults[el.dataset.edit] ?? el.innerHTML;
-        el.innerHTML = sanitize(html);
+        const isBodyText = el.matches("p, .hero-copy");
+        el.innerHTML = isBodyText ? renderMultilineHtml(html) : renderMultilineHtml(html, { indent: false });
       });
       refreshEditTimes();
     }
@@ -2092,19 +2160,21 @@
 
       if (type === "album") {
         const caption = sanitize(String(form.elements.caption?.value || "").trim());
-        const content = sanitize(String(form.elements.content?.value || "").trim());
+        const content = sanitize(normalizeMultilineInput(form.elements.content?.value || ""));
         const file = form.elements.photo?.files?.[0];
         entry.caption = caption || existing?.caption || addConfig.album.defaults.caption;
         entry.content = content;
         entry.photo = existing?.photo || "";
         if (file) entry.photo = await readFileAsDataUrl(file);
         if (!entry.photo) return null;
+        entry.photoHash = file ? (getCachedImageHash(entry.photo) || "") : normalizeImageHash(existing?.photoHash);
         entry.position = file ? normalizePhotoPosition() : normalizePhotoPosition(existing?.position);
         return entry.caption || entry.content || entry.photo ? entry : null;
       }
 
       config.fields.forEach((field) => {
-        entry[field] = sanitize(String(form.elements[field]?.value || "").trim());
+        const value = String(form.elements[field]?.value || "");
+        entry[field] = sanitize(field === "text" ? normalizeMultilineInput(value) : value.trim());
       });
 
       return entry.text || entry.title ? entry : null;
@@ -2285,7 +2355,7 @@
         const position = normalizePhotoPosition(entry.position);
         card.innerHTML = `
           <img src="${escapeAttr(entry.photo || "")}" alt="新增照片" style="object-position: ${position.x}% ${position.y}%;">
-          <span><b>${sanitize(entry.caption || addConfig.album.defaults.caption)}</b><em>${sanitize(entry.content || "")}</em></span>
+          <span><b>${sanitize(entry.caption || addConfig.album.defaults.caption)}</b><em>${renderMultilineHtml(entry.content || "")}</em></span>
           <button class="module-delete" type="button">删除</button>
           <button class="module-edit" type="button">编辑</button>
           <button class="module-position" type="button">展示区域</button>
@@ -2297,7 +2367,7 @@
           card.innerHTML = `
             <time>${sanitize(entry.time || addConfig.story.defaults.time)}</time>
             <h3>${sanitize(entry.title || addConfig.story.defaults.title)}</h3>
-            <p>${sanitize(entry.text || addConfig.story.defaults.text)}</p>
+            <p>${renderMultilineHtml(entry.text || addConfig.story.defaults.text)}</p>
             <button class="module-delete" type="button">删除</button>
             <button class="module-edit" type="button">编辑</button>
             <small class="edit-time">${updatedAt}</small>
@@ -2305,7 +2375,7 @@
         } else if (type === "notes") {
           card.innerHTML = `
             <time>${sanitize(entry.time || addConfig.notes.defaults.time)}</time>
-            <p>${sanitize(entry.text || addConfig.notes.defaults.text)}</p>
+            <p>${renderMultilineHtml(entry.text || addConfig.notes.defaults.text)}</p>
             <button class="module-delete" type="button">删除</button>
             <button class="module-edit" type="button">编辑</button>
             <small class="edit-time">${updatedAt}</small>
@@ -2315,7 +2385,7 @@
           card.innerHTML = `
             <span>${sanitize(entry.label || config.defaults.label)}</span>
             <h3>${sanitize(entry.title || config.defaults.title)}</h3>
-            <p>${sanitize(entry.text || config.defaults.text)}</p>
+            <p>${renderMultilineHtml(entry.text || config.defaults.text)}</p>
             <button class="module-delete" type="button">删除</button>
             <button class="module-edit" type="button">编辑</button>
             <small class="edit-time">${updatedAt}</small>
@@ -2366,13 +2436,196 @@
       form.querySelector("input, textarea")?.focus();
     }
 
-    function readFileAsDataUrl(file) {
+    async function readFileAsDataUrl(file) {
+      return storeImageFile(file);
+    }
+
+    async function storeImageFile(file) {
+      const imageHash = await hashBlob(file);
+      const blob = await prepareImageBlob(file);
+      return uploadImageBlob(blob, imageHash);
+    }
+
+    async function prepareImageBlob(file, options = {}) {
+      if (!file || !String(file.type || "").startsWith("image/")) {
+        throw new Error("invalid image file");
+      }
+
+      const settings = {
+        maxWidth: options.maxWidth || 1600,
+        maxHeight: options.maxHeight || 1600,
+        quality: options.quality || 0.82,
+        type: options.type || "image/jpeg"
+      };
+      const sourceUrl = URL.createObjectURL(file);
+      try {
+        const image = await loadImageElement(sourceUrl);
+        const ratio = Math.min(1, settings.maxWidth / image.naturalWidth, settings.maxHeight / image.naturalHeight);
+        const width = Math.max(1, Math.round(image.naturalWidth * ratio));
+        const height = Math.max(1, Math.round(image.naturalHeight * ratio));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d", { alpha: false });
+        context.fillStyle = "#fff";
+        context.fillRect(0, 0, width, height);
+        context.drawImage(image, 0, 0, width, height);
+        const blob = await canvasToBlob(canvas, settings.type, settings.quality);
+        if (!blob) throw new Error("image compression failed");
+        return blob;
+      } finally {
+        URL.revokeObjectURL(sourceUrl);
+      }
+    }
+
+    function loadImageElement(src) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.addEventListener("load", () => resolve(image), { once: true });
+        image.addEventListener("error", reject, { once: true });
+        image.src = src;
+      });
+    }
+
+    function canvasToBlob(canvas, type, quality) {
+      return new Promise((resolve) => {
+        canvas.toBlob(resolve, type, quality);
+      });
+    }
+
+    function blobToDataUrl(blob) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.addEventListener("load", () => resolve(reader.result));
         reader.addEventListener("error", reject);
-        reader.readAsDataURL(file);
+        reader.readAsDataURL(blob);
       });
+    }
+
+    function dataUrlToBlob(value) {
+      const match = String(value || "").match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+      if (!match) return null;
+      const binary = atob(match[2]);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+      }
+      return new Blob([bytes], { type: match[1] });
+    }
+
+    async function hashBlob(blob) {
+      if (!window.crypto?.subtle || !blob?.arrayBuffer) return "";
+      try {
+        const digest = await window.crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+        return Array.from(new Uint8Array(digest))
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join("");
+      } catch {
+        return "";
+      }
+    }
+
+    function rememberImageHash(hash, src) {
+      const normalizedHash = normalizeImageHash(hash);
+      const normalizedSrc = String(src || "");
+      if (!normalizedHash || !normalizedSrc) return;
+      imageHashToSrc.set(normalizedHash, normalizedSrc);
+      imageSrcToHash.set(normalizedSrc, normalizedHash);
+    }
+
+    function getCachedImageHash(src) {
+      return imageSrcToHash.get(String(src || "")) || "";
+    }
+
+    function findImageByHash(hash) {
+      const normalizedHash = normalizeImageHash(hash);
+      if (!normalizedHash) return "";
+      const cached = imageHashToSrc.get(normalizedHash);
+      if (cached) return cached;
+
+      const fixedIndex = normalizePhotoHashes(state.photoHashes).findIndex((value) => value === normalizedHash);
+      if (fixedIndex >= 0 && state.photos?.[fixedIndex]) {
+        rememberImageHash(normalizedHash, state.photos[fixedIndex]);
+        return state.photos[fixedIndex];
+      }
+
+      const searchObjects = [
+        ...(Array.isArray(state.photoEntries) ? state.photoEntries : []),
+        ...(Array.isArray(state.travelEntries) ? state.travelEntries : []),
+        ...Object.values(state.contentEntries || {}).flatMap((entries) => Array.isArray(entries) ? entries : []),
+        ...Object.values(state.customItems || {}).flatMap((entries) => Array.isArray(entries) ? entries : [])
+      ];
+      const existing = searchObjects.find((entry) => {
+        return normalizeImageHash(entry?.photoHash || entry?.imageHash) === normalizedHash
+          && typeof (entry.photo || entry.image) === "string"
+          && !String(entry.photo || entry.image).startsWith("data:image/");
+      });
+      const src = existing ? String(existing.photo || existing.image || "") : "";
+      if (src) rememberImageHash(normalizedHash, src);
+      return src;
+    }
+
+    async function uploadImageBlob(blob, preferredHash = "") {
+      const imageHash = normalizeImageHash(preferredHash) || await hashBlob(blob);
+      const existingSrc = findImageByHash(imageHash);
+      if (existingSrc) return existingSrc;
+
+      try {
+        const response = await fetch(apiImagesUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": blob.type || "image/jpeg",
+            "X-Edit-Token": getEditToken(),
+            "X-Edit-Code": getEditUploadCode(),
+            "X-Image-Hash": imageHash
+          },
+          body: blob
+        });
+        if (!response.ok) throw new Error("image upload failed");
+        const payload = await response.json();
+        if (payload?.src) {
+          const src = String(payload.src);
+          rememberImageHash(payload.imageHash || imageHash, src);
+          return src;
+        }
+      } catch {
+        // Static/offline copies keep a compressed inline image as a fallback.
+      }
+      const dataUrl = await blobToDataUrl(blob);
+      rememberImageHash(imageHash, dataUrl);
+      return dataUrl;
+    }
+
+    async function moveInlineImagesToUploads(target) {
+      const seen = new Map();
+
+      const moveValue = async (value) => {
+        if (typeof value !== "string" || !value.startsWith("data:image/")) return value;
+        if (seen.has(value)) return seen.get(value);
+        const blob = dataUrlToBlob(value);
+        if (!blob) return value;
+        const next = await uploadImageBlob(blob);
+        seen.set(value, next);
+        return next;
+      };
+
+      const walk = async (value) => {
+        if (Array.isArray(value)) {
+          for (let index = 0; index < value.length; index += 1) {
+            value[index] = await walk(value[index]);
+          }
+          return value;
+        }
+        if (value && typeof value === "object") {
+          for (const key of Object.keys(value)) {
+            value[key] = await walk(value[key]);
+          }
+          return value;
+        }
+        return moveValue(value);
+      };
+
+      await walk(target);
     }
 
     function initWishes() {
@@ -2472,23 +2725,24 @@
           card.appendChild(button);
         }
 
-        input.addEventListener("change", () => {
+        input.addEventListener("change", async () => {
           const file = input.files[0];
           if (!file) return;
-          const reader = new FileReader();
-          reader.onload = () => {
+          try {
             const index = Number(input.dataset.photo);
-            state.photos[index] = reader.result;
+            state.photos[index] = await storeImageFile(file);
+            state.photoHashes[index] = getCachedImageHash(state.photos[index]) || "";
             state.photoPositions[index] = normalizePhotoPosition(state.photoPositions[index]);
-            save();
+            await save();
             const img = document.querySelector(`[data-photo-preview="${index}"]`);
-            img.src = reader.result;
+            img.src = state.photos[index];
             const position = normalizePhotoPosition(state.photoPositions[index]);
             img.style.objectPosition = `${position.x}% ${position.y}%`;
             img.closest(".photo-card").classList.add("has-image");
             openFixedPhotoPositionEditor(index);
-          };
-          reader.readAsDataURL(file);
+          } catch {
+            input.value = "";
+          }
         });
         card?.addEventListener("click", (event) => {
           if (getEditAuth() || event.target.closest("button") || !card.classList.contains("has-image")) return;
@@ -2509,7 +2763,7 @@
           <img src="${escapeAttr(src)}" alt="${escapeAttr(title || "照片预览")}">
           <div class="photo-preview-caption">
             <strong>${escapeHtml(title || "回忆照片")}</strong>
-            <span>${escapeHtml(content || "")}</span>
+            <span>${renderMultilineHtml(content || "")}</span>
           </div>
         </div>
       `;
@@ -2627,6 +2881,23 @@
         });
       });
       return template.innerHTML;
+    }
+
+    function normalizeMultilineInput(value) {
+      return String(value || "").replace(/\r\n?/g, "\n").trim();
+    }
+
+    function renderMultilineHtml(value, options = {}) {
+      const normalized = normalizeMultilineInput(value);
+      if (!normalized) return "";
+      const lines = sanitize(normalized).split("\n");
+      const shouldIndent = options.indent !== false;
+      if (!shouldIndent) return lines.join("<br>");
+
+      return lines.map((line) => {
+        const emptyClass = line ? "" : " is-empty";
+        return `<span class="multiline-indent-line${emptyClass}">${line}</span>`;
+      }).join("");
     }
 
     function escapeHtml(value) {
