@@ -2115,7 +2115,13 @@
             return;
           }
 
-          const entry = await readAddForm(type, form);
+          let entry;
+          try {
+            entry = await readAddForm(type, form);
+          } catch {
+            setAddMessage(form, "照片上传失败，请检查网络或网站图片存储配置后重试。");
+            return;
+          }
           if (!entry) {
             setAddMessage(form, type === "album" ? "请先上传一张照片。" : "先写一点内容再保存。");
             return;
@@ -2589,11 +2595,9 @@
           return src;
         }
       } catch {
-        // Static/offline copies keep a compressed inline image as a fallback.
+        // Never fall back to base64: uploaded images must live in site storage.
       }
-      const dataUrl = await blobToDataUrl(blob);
-      rememberImageHash(imageHash, dataUrl);
-      return dataUrl;
+      throw new Error("图片上传服务不可用，已阻止把照片写入 HTML/base64。");
     }
 
     async function moveInlineImagesToUploads(target) {

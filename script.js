@@ -1651,7 +1651,14 @@ function initAlbumPhotoForm() {
     const hasNewPhoto = Boolean(file);
     let photo = existing?.photo || "";
 
-    if (file) photo = await storeImageFile(file);
+    if (file) {
+      try {
+        photo = await storeImageFile(file);
+      } catch {
+        setAlbumPhotoMessage("照片上传失败，请检查网络或网站图片存储配置后重试。");
+        return;
+      }
+    }
     if (!photo) {
       setAlbumPhotoMessage("请先选择一张照片。");
       return;
@@ -2299,7 +2306,13 @@ function renderTravelMap() {
         if (!file) return;
         const entry = state.travelEntries.find((item) => item.id === input.dataset.travelPhoto);
         if (!entry) return;
-        entry.photo = await storeImageFile(file);
+        try {
+          entry.photo = await storeImageFile(file);
+        } catch {
+          input.value = "";
+          showTravelMessage("照片上传失败，请检查网络或网站图片存储配置后重试。");
+          return;
+        }
         entry.photoHash = getCachedImageHash(entry.photo) || "";
         entry.position = normalizePhotoPosition(entry.position);
         entry.updatedAt = Date.now();
@@ -2597,12 +2610,10 @@ async function uploadImageBlob(blob, preferredHash = "") {
       return src;
     }
   } catch {
-    // Static/offline copies cannot accept file uploads, so keep a compressed
-    // inline image as a graceful fallback.
+    // Do not silently embed a base64 image in site-state.json. That makes
+    // every page load much heavier and leaves the photo tied to local state.
   }
-  const dataUrl = await blobToDataUrl(blob);
-  rememberImageHash(imageHash, dataUrl);
-  return dataUrl;
+  throw new Error("图片上传服务不可用，已阻止把照片写入 HTML/base64。");
 }
 
 async function moveInlineImagesToUploads(target) {

@@ -13,6 +13,38 @@ from urllib.request import Request, urlopen
 
 
 ROOT = Path(__file__).resolve().parent
+
+
+def load_dotenv(path):
+    """Load simple KEY=VALUE pairs from a local .env file.
+
+    Values already provided by the operating system take precedence, so a
+    deployed environment can still override local development settings.
+    """
+    if not path.is_file():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
+
+
+load_dotenv(ROOT / ".env")
+
 DATA_DIR = ROOT / "data"
 STATE_FILE = DATA_DIR / "site-state.json"
 UPLOAD_DIR = ROOT / "assets" / "uploads"
@@ -330,7 +362,12 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(404)
             return
         if self.path.startswith("/api/health"):
-            self.send_json({"ok": True})
+            self.send_json({
+                "ok": True,
+                "storage": "supabase" if USE_SUPABASE_STORAGE else "local",
+                "supabaseConfigured": USE_SUPABASE_STORAGE,
+                "bucket": SUPABASE_BUCKET if USE_SUPABASE_STORAGE else None,
+            })
             return
         if self.path.startswith("/api/geocode"):
             self.send_json(geocode_place(self.path))
