@@ -345,7 +345,7 @@
       "id": "photo-1788489384730-zqvzce7us2p",
       "caption": "1",
       "content": "",
-      "photo": "/assets/uploads/743895eea25de5a0ae5ed08177d63c33a211d09ffd1ca5ee8449a5ad32f1a898.jpg",
+      "photo": "https://ebemlxfzszcomhruamlp.supabase.co/storage/v1/object/public/album-photos/album/dedup/743895eea25de5a0ae5ed08177d63c33a211d09ffd1ca5ee8449a5ad32f1a898.jpg",
       "photoHash": "743895eea25de5a0ae5ed08177d63c33a211d09ffd1ca5ee8449a5ad32f1a898",
       "position": {
         "x": 50,
@@ -357,7 +357,7 @@
       "id": "photo-1788488430363-w5vo22dqgwp",
       "caption": "见面前的Jellycat",
       "content": "都说第一只Jellycat要是最重要的人送的，我私心要送给你你的第一只Jellycat",
-      "photo": "/assets/uploads/8c6a2f65ab962ba644a81a6aa2e7aec70f1c07d0d3c5629cffe9c4a7aacea4e1.jpg",
+      "photo": "https://ebemlxfzszcomhruamlp.supabase.co/storage/v1/object/public/album-photos/album/dedup/8c6a2f65ab962ba644a81a6aa2e7aec70f1c07d0d3c5629cffe9c4a7aacea4e1.jpg",
       "photoHash": "8c6a2f65ab962ba644a81a6aa2e7aec70f1c07d0d3c5629cffe9c4a7aacea4e1",
       "position": {
         "x": 50,
@@ -369,7 +369,7 @@
       "id": "photo-1787730158913-96zs2rxzzop",
       "caption": "一起打出炫彩花种",
       "content": "",
-      "photo": "/assets/uploads/82ddbbb8165138e94297827fecf9274b82c043d9a53fab5050b4c5f60dbaa4a9.jpg",
+      "photo": "https://ebemlxfzszcomhruamlp.supabase.co/storage/v1/object/public/album-photos/album/dedup/82ddbbb8165138e94297827fecf9274b82c043d9a53fab5050b4c5f60dbaa4a9.jpg",
       "photoHash": "82ddbbb8165138e94297827fecf9274b82c043d9a53fab5050b4c5f60dbaa4a9",
       "position": {
         "x": 66,
