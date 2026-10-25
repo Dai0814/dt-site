@@ -1,8 +1,8 @@
 const defaults = {
   nameA: "D",
   nameB: "T",
-  accessCode: "20260526",
-  editCode: "20260610",
+  accessCode: "",
+  editCode: "",
   startDate: "2026-05-26",
   startTime: "23:29:00",
   wishes: [
@@ -25,7 +25,6 @@ const defaults = {
   ],
   contentEntries: {
     story: [],
-    daily: [],
     notes: [],
     storyTimeline: []
   },
@@ -142,14 +141,6 @@ const contentEntryConfig = {
     cardClass: "content-entry-card timeline-entry",
     defaults: { time: "\u65b0\u7684\u7247\u6bb5", title: "\u65b0\u7684\u6545\u4e8b", text: "\u5199\u4e0b\u8fd9\u4e2a\u77ac\u95f4\u3002", image: "", imageSize: "medium" },
     submitText: "\u65b0\u589e\u6545\u4e8b"
-  },
-  daily: {
-    fields: ["label", "title", "text"],
-    listSelector: '[data-content-list="daily"]',
-    formSelector: '[data-content-form="daily"]',
-    cardClass: "content-entry-card daily-card-item",
-    defaults: { label: "Daily", title: "\u65b0\u7684\u65e5\u5e38", text: "\u5199\u4e0b\u4eca\u5929\u7684\u5c0f\u4e8b\u3002" },
-    submitText: "\u65b0\u589e\u65e5\u5e38"
   },
   notes: {
     fields: ["time", "text"],
@@ -413,7 +404,7 @@ function normalizeState(value) {
     ...defaults,
     ...next,
     accessCode: String(next.accessCode || next.loginCode || defaults.accessCode),
-    startDate: !next.startDate || next.startDate === "2024-05-20" ? defaults.startDate : next.startDate,
+    startDate: next.startDate || defaults.startDate,
     startTime: next.startTime || defaults.startTime,
     wishes: Array.isArray(next.wishes) ? next.wishes.map(normalizeWish).filter(Boolean) : defaults.wishes,
     photos: Array.isArray(next.photos) ? next.photos.concat(defaults.photos).slice(0, 3) : defaults.photos,
@@ -922,7 +913,8 @@ function updateTogetherTime() {
   const now = new Date();
   const diff = Math.max(0, now - start);
   const totalSeconds = Math.floor(diff / 1000);
-  const days = Math.floor(totalSeconds / 86400);
+  // Count the start date itself as day 1, so June 10 is included in the total.
+  const days = Math.floor(totalSeconds / 86400) + 1;
   const hours = Math.floor((totalSeconds % 86400) / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
@@ -2730,7 +2722,8 @@ function initForms() {
       state.nameB = els.nameB.value.trim() || defaults.nameB;
       state.startDate = els.startDate.value || defaults.startDate;
       state.startTime = els.startTime.value || defaults.startTime;
-      state.accessCode = els.loginCodeSetting.value.trim() || defaults.accessCode;
+      const newAccessCode = els.loginCodeSetting.value.trim();
+      if (newAccessCode) state.accessCode = newAccessCode;
       applyNames();
       updateTogetherTime();
       await saveState();
@@ -3353,14 +3346,6 @@ function createContentEntryCard(type, entry) {
       <h3>${sanitizeEditableHtml(entry.title || config.defaults.title)}</h3>
       ${contentEntryImageHtml(entry)}
       <p>${renderMultilineHtml(entry.text || config.defaults.text)}</p>
-      ${contentEntryActionsHtml(entry.id)}
-    `;
-  } else if (type === "daily") {
-    card.innerHTML = `
-      <span>${sanitizeEditableHtml(entry.label || config.defaults.label)}</span>
-      <h3>${sanitizeEditableHtml(entry.title || config.defaults.title)}</h3>
-      <p>${renderMultilineHtml(entry.text || config.defaults.text)}</p>
-      ${contentEntryTimeHtml(entry)}
       ${contentEntryActionsHtml(entry.id)}
     `;
   } else if (type === "notes") {

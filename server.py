@@ -71,8 +71,8 @@ IMAGE_CONTENT_TYPES = {
 DEFAULT_STATE = {
     "nameA": "D",
     "nameB": "T",
-    "accessCode": "20260526",
-    "editCode": "20260610",
+    "accessCode": os.environ.get("ACCESS_CODE", ""),
+    "editCode": os.environ.get("EDIT_CODE", ""),
     "startDate": "2026-05-26",
     "startTime": "23:29:00",
     "wishes": [
@@ -300,16 +300,22 @@ def upload_image_to_supabase(image_hash, extension, content_type, data):
         f"{SUPABASE_URL}/storage/v1/object/"
         f"{quote(SUPABASE_BUCKET, safe='')}/{quote(object_path, safe='/')}"
     )
+    storage_headers = {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Content-Type": content_type,
+        "x-upsert": "false",
+    }
+    # Legacy JWT keys (eyJ...) must be sent on both apikey and Authorization.
+    # New opaque keys (sb_secret_...) are not JWTs; sending them on
+    # Authorization makes the platform try to parse them as a JWT and reject
+    # the request, so they go on the apikey header only.
+    if not SUPABASE_SERVICE_ROLE_KEY.startswith("sb_"):
+        storage_headers["Authorization"] = f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"
     request = Request(
         endpoint,
         data=data,
         method="POST",
-        headers={
-            "apikey": SUPABASE_SERVICE_ROLE_KEY,
-            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-            "Content-Type": content_type,
-            "x-upsert": "false",
-        },
+        headers=storage_headers,
     )
     try:
         with urlopen(request, timeout=30) as response:

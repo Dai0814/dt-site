@@ -1,4 +1,4 @@
-const CACHE_NAME = "dt-site-v7";
+const CACHE_NAME = "dt-site-v10";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -54,18 +54,28 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
 
+  // 页面导航：网络优先，离线回退到缓存（再退到 index.html）
   if (request.mode === "navigate") {
     event.respondWith(networkFirst(request, "./index.html"));
     return;
   }
 
-  if (url.pathname.endsWith("/data/site-state.json") || url.pathname.endsWith("/data/love-lines.md")) {
+  // 代码与标记类资源（HTML / JS / CSS）及数据文件：网络优先。
+  // 这样改完代码刷新即生效，不会被旧缓存挡住；离线时自动回退缓存。
+  if (isNetworkFirstPath(url.pathname)) {
     event.respondWith(networkFirst(request, request.url));
     return;
   }
 
+  // 图片、音频、图标等静态素材：缓存优先，后台静默更新（省流量、加快首屏）
   event.respondWith(staleWhileRevalidate(request));
 });
+
+function isNetworkFirstPath(pathname) {
+  if (/\.(?:html|js|css)$/i.test(pathname)) return true;
+  if (pathname.endsWith("/data/site-state.json") || pathname.endsWith("/data/love-lines.md")) return true;
+  return false;
+}
 
 async function networkFirst(request, fallbackUrl) {
   const cache = await caches.open(CACHE_NAME);

@@ -99,14 +99,22 @@ exports.handler = async function handler(event) {
 
   const uploadUrl = `${supabaseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${quotePath(objectPath)}`;
 
+  const uploadHeaders = {
+    "apikey": serviceRoleKey,
+    "Content-Type": contentType,
+    "x-upsert": "false",
+  };
+  // Legacy JWT keys (eyJ...) must be sent on both apikey and Authorization.
+  // New opaque keys (sb_secret_...) are not JWTs; sending them on
+  // Authorization makes the platform parse them as a JWT and reject the
+  // request, so they go on the apikey header only.
+  if (!serviceRoleKey.startsWith("sb_")) {
+    uploadHeaders["Authorization"] = `Bearer ${serviceRoleKey}`;
+  }
+
   const response = await fetch(uploadUrl, {
     method: "POST",
-    headers: {
-      "apikey": serviceRoleKey,
-      "Authorization": `Bearer ${serviceRoleKey}`,
-      "Content-Type": contentType,
-      "x-upsert": "false",
-    },
+    headers: uploadHeaders,
     body: buffer,
   });
 
