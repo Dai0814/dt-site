@@ -610,6 +610,29 @@ async function loadState() {
     });
     if (!response.ok) throw new Error("state request failed");
     const serverState = normalizeState(await response.json());
+
+    // Auto-seed: when the live database has no content yet but the deployed
+    // static export (data/site-state.json) does, adopt it on first load so
+    // existing stories/notes/photos are not lost after going live. An editor
+    // visit persists it back to Supabase; viewers still see it immediately.
+    if (!hasMeaningfulLocalState(serverState, JSON.stringify(serverState))) {
+      try {
+        const staticResponse = await fetch(staticStateUrl, { cache: "no-store" });
+        if (!staticResponse.ok) throw new Error("static state request failed");
+        const staticState = normalizeState(await staticResponse.json());
+        if (hasMeaningfulLocalState(staticState, JSON.stringify(staticState))) {
+          const seededCapsules = mergeCapsules(localState.capsules, staticState.capsules);
+          Object.assign(state, staticState, { capsules: seededCapsules });
+          localStorage.setItem(storageKey, JSON.stringify(state));
+          lastPersistedStateSignature = getStateSyncSignature(state);
+          if (canEdit()) await saveState();
+          return;
+        }
+      } catch {
+        // Ignore static fallback errors and continue with normal handling.
+      }
+    }
+
     if (!serverState.updatedAt && hasMeaningfulLocalState(localState, savedRaw)) {
       Object.assign(state, serverState, localState);
       localStorage.setItem(storageKey, JSON.stringify(state));
