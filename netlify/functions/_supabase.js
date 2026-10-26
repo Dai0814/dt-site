@@ -61,6 +61,8 @@ function requireConfig() {
   return { ok: true, value };
 }
 
+const FETCH_TIMEOUT_MS = 9000; // under Netlify's 10s default limit
+
 async function getMainRow(value) {
   const endpoint = `${value.url}/rest/v1/${encodeURIComponent(value.table)}?id=eq.main&select=data,updated_at`;
   const headers = { apikey: value.key };
@@ -68,10 +70,27 @@ async function getMainRow(value) {
   // Authorization makes PostgREST reject the request, so they go on the
   // apikey header only (legacy eyJ JWT keys still use Authorization).
   if (!value.key.startsWith("sb_")) headers.Authorization = `Bearer ${value.key}`;
-  const response = await fetch(endpoint, { headers });
-  if (!response.ok) throw new Error(`state read failed (${response.status})`);
-  const rows = await response.json();
-  return rows[0] || { data: {}, updated_at: "" };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(endpoint, { headers, signal: ctrl.signal });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`state read failed (${response.status}): ${text.slice(0, 240)}`);
+    }
+    const rows = await response.json();
+    return rows[0] || { data: {}, updated_at: "" };
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      throw new Error(
+        `state read timed out after ${FETCH_TIMEOUT_MS}ms — Supabase unreachable ` +
+          `(project paused? wrong SUPABASE_URL? network blocked?)`
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function saveMainRow(value, data) {
@@ -83,16 +102,31 @@ async function saveMainRow(value, data) {
     Prefer: "resolution=merge-duplicates,return=representation",
   };
   if (!value.key.startsWith("sb_")) headers.Authorization = `Bearer ${value.key}`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers,
-    body: JSON.stringify([{ id: "main", data, updated_at: new Date(Number(updatedAt)).toISOString() }]),
-  });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(`state save failed (${response.status}): ${detail.slice(0, 240)}`);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      signal: ctrl.signal,
+      body: JSON.stringify([{ id: "main", data, updated_at: new Date(Number(updatedAt)).toISOString() }]),
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      throw new Error(`state save failed (${response.status}): ${detail.slice(0, 240)}`);
+    }
+    return { ...data, updatedAt };
+  } catch (err) {
+    if (err && err.name === "AbortError") {
+      throw new Error(
+        `state save timed out after ${FETCH_TIMEOUT_MS}ms — Supabase unreachable ` +
+          `(project paused? wrong SUPABASE_URL? network blocked?)`
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  return { ...data, updatedAt };
 }
 
 module.exports = {

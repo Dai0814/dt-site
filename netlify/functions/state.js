@@ -47,6 +47,11 @@ exports.handler = async function handler(event) {
     const saved = await saveMainRow(value, payload);
     return json(200, saved);
   } catch (error) {
-    return json(502, { ok: false, error: "state service unavailable" });
+    console.error("[state] state service error:", error);
+    return json(502, {
+      ok: false,
+      error: "state service unavailable",
+      detail: String((error && error.message) || error),
+    });
   }
 };

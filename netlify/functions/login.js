@@ -25,7 +25,12 @@ exports.handler = async function handler(event) {
       return json(401, { ok: false, error: "invalid access password" });
     }
     return json(200, { ok: true });
-  } catch {
-    return json(502, { ok: false, error: "state service unavailable" });
+  } catch (error) {
+    console.error("[login] state service error:", error);
+    return json(502, {
+      ok: false,
+      error: "state service unavailable",
+      detail: String((error && error.message) || error),
+    });
   }
 };
