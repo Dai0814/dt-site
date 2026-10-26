@@ -21,3 +21,8 @@
   from = "/api/login"
   to = "/.netlify/functions/login"
   status = 200
+
+[[redirects]]
+  from = "/api/diag"
+  to = "/.netlify/functions/diag"
+  status = 200
