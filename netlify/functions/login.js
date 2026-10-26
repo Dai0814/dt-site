@@ -20,7 +20,11 @@ exports.handler = async function handler(event) {
 
   try {
     const row = await getMainRow(checked.value);
-    const accessCode = String(row.data?.accessCode || process.env.ACCESS_CODE || "").trim();
+    // The deploy-time ACCESS_CODE env var is authoritative for the visitor gate;
+    // the stored data.accessCode is only a fallback when the env is unset.
+    // (Before this fix, the stored value won: a stale 20260526 left in the DB
+    // overrode the intended 20260610 env, so the visitor login demanded 20260526.)
+    const accessCode = String(process.env.ACCESS_CODE || row.data?.accessCode || "").trim();
     if (!accessCode || !timingSafeEqual(String(payload.code || "").trim(), accessCode)) {
       return json(401, { ok: false, error: "invalid access password" });
     }

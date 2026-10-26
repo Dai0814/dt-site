@@ -40,7 +40,7 @@ exports.handler = async function handler() {
 
   const start = Date.now();
   try {
-    const endpoint = `${value.url}/rest/v1/${encodeURIComponent(value.table)}?id=eq.main&select=id&limit=1`;
+    const endpoint = `${value.url}/rest/v1/${encodeURIComponent(value.table)}?id=eq.main&select=id,data,updated_at&limit=1`;
     const headers = { apikey: value.key };
     if (!value.key.startsWith("sb_")) headers.Authorization = `Bearer ${value.key}`;
     const response = await timedFetch(endpoint, { method: "GET", headers }, 5000);
@@ -51,6 +51,19 @@ exports.handler = async function handler() {
       latencyMs: Date.now() - start,
       sample: text.slice(0, 240),
     });
+    if (response.ok) {
+      try {
+        const rows = JSON.parse(text);
+        const data = (rows && rows[0] && rows[0].data) || {};
+        const mask = (v) =>
+          v ? String(v).slice(0, 4) + "...(len " + String(v).length + ")" : "(none)";
+        result.dataAccessCodeMasked = mask(data.accessCode);
+        result.envAccessCodeMasked = mask(process.env.ACCESS_CODE);
+        result.envEditCodeMasked = mask(process.env.EDIT_CODE);
+      } catch {
+        /* ignore parse for the extra fields */
+      }
+    }
   } catch (err) {
     result.steps.push({
       step: "supabase-rest",
