@@ -63,12 +63,12 @@ function requireConfig() {
 
 async function getMainRow(value) {
   const endpoint = `${value.url}/rest/v1/${encodeURIComponent(value.table)}?id=eq.main&select=data,updated_at`;
-  const response = await fetch(endpoint, {
-    headers: {
-      apikey: value.key,
-      Authorization: `Bearer ${value.key}`,
-    },
-  });
+  const headers = { apikey: value.key };
+  // New opaque keys (sb_secret_...) are not JWTs; sending them on
+  // Authorization makes PostgREST reject the request, so they go on the
+  // apikey header only (legacy eyJ JWT keys still use Authorization).
+  if (!value.key.startsWith("sb_")) headers.Authorization = `Bearer ${value.key}`;
+  const response = await fetch(endpoint, { headers });
   if (!response.ok) throw new Error(`state read failed (${response.status})`);
   const rows = await response.json();
   return rows[0] || { data: {}, updated_at: "" };
@@ -77,14 +77,15 @@ async function getMainRow(value) {
 async function saveMainRow(value, data) {
   const updatedAt = String(Date.now());
   const endpoint = `${value.url}/rest/v1/${encodeURIComponent(value.table)}`;
+  const headers = {
+    apikey: value.key,
+    "Content-Type": "application/json",
+    Prefer: "resolution=merge-duplicates,return=representation",
+  };
+  if (!value.key.startsWith("sb_")) headers.Authorization = `Bearer ${value.key}`;
   const response = await fetch(endpoint, {
     method: "POST",
-    headers: {
-      apikey: value.key,
-      Authorization: `Bearer ${value.key}`,
-      "Content-Type": "application/json",
-      Prefer: "resolution=merge-duplicates,return=representation",
-    },
+    headers,
     body: JSON.stringify([{ id: "main", data, updated_at: new Date(Number(updatedAt)).toISOString() }]),
   });
   if (!response.ok) {
