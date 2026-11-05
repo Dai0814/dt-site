@@ -603,6 +603,26 @@ async function loadState() {
   const localState = normalizeState(saved);
   Object.assign(state, localState);
 
+  // One-shot resync: when an editor opens the site with ?resync=1, push the
+  // committed static export (data/site-state.json) up to Supabase. This is the
+  // escape hatch for "the live database has stale content but the deployed
+  // static file is the latest" — it makes the cloud mirror the local backup.
+  if (new URLSearchParams(window.location.search).get("resync") === "1" && canEdit()) {
+    try {
+      const res = await fetch(staticStateUrl, { cache: "no-store" });
+      if (res.ok) {
+        const staticState = normalizeState(await res.json());
+        const mergedCapsules = mergeCapsules(localState.capsules, staticState.capsules);
+        Object.assign(state, staticState, { capsules: mergedCapsules });
+        localStorage.setItem(storageKey, JSON.stringify(state));
+        await saveState();
+        return;
+      }
+    } catch {
+      // Fall through to the normal load if the resync fetch fails.
+    }
+  }
+
   try {
     const response = await fetch(apiStateUrl, {
       cache: "no-store",
@@ -2755,6 +2775,35 @@ function initForms() {
 
   document.querySelector("[data-export-state]")?.addEventListener("click", exportStateFile);
   els.copyGuestLink?.addEventListener("click", copyGuestShareLink);
+
+  // Editor-only "resync from backup" button: pushes the committed static export
+  // (data/site-state.json) up to Supabase so the live database mirrors the
+  // latest local edits. Shown next to the export button (same editor-only CSS).
+  if (!document.querySelector("[data-resync-state]")) {
+    const exportBtn = document.querySelector("[data-export-state]");
+    if (exportBtn) {
+      const resyncBtn = document.createElement("button");
+      resyncBtn.type = "button";
+      resyncBtn.setAttribute("data-resync-state", "1");
+      resyncBtn.className = exportBtn.className;
+      resyncBtn.textContent = "从本地备份同步到云端";
+      resyncBtn.addEventListener("click", async () => {
+        if (!window.confirm("将用本地提交的最新备份（data/site-state.json）覆盖云端内容，确定？")) return;
+        try {
+          const r = await fetch(staticStateUrl, { cache: "no-store" });
+          if (!r.ok) throw new Error("读取本地备份失败");
+          const s = normalizeState(await r.json());
+          Object.assign(state, s, { capsules: mergeCapsules(state.capsules, s.capsules) });
+          localStorage.setItem(storageKey, JSON.stringify(state));
+          await saveState();
+          window.alert("已同步到云端，刷新页面即可看到最新内容。");
+        } catch (e) {
+          window.alert("同步失败：" + (e && e.message ? e.message : e));
+        }
+      });
+      exportBtn.insertAdjacentElement("afterend", resyncBtn);
+    }
+  }
 
   if (els.wishForm) {
     els.wishForm.addEventListener("submit", async (event) => {
