@@ -1,8 +1,12 @@
 const crypto = require("crypto");
 
+function normalizeSupabaseUrl(raw) {
+  return String(raw || "").trim().replace(/\/+$/, "").replace(/\/(?:rest|storage)\/v1$/i, "");
+}
+
 function config() {
   return {
-    url: String(process.env.SUPABASE_URL || "").replace(/\/+$/, ""),
+    url: normalizeSupabaseUrl(process.env.SUPABASE_URL),
     key: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || "",
     table: String(process.env.SUPABASE_STATE_TABLE || "site_state").trim(),
     editCode: String(process.env.EDIT_CODE || "").trim(),
@@ -130,6 +134,7 @@ async function saveMainRow(value, data) {
 }
 
 module.exports = {
+  normalizeSupabaseUrl,
   config,
   json,
   timingSafeEqual,

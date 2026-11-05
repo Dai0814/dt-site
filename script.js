@@ -2704,6 +2704,7 @@ function initForms() {
         sessionStorage.removeItem("editor-return-to");
         navigateWithTransition(returnTo);
       };
+      let serviceUnavailable = false;
       try {
         const response = await fetch(isEditorLogin ? apiAuthUrl : apiLoginUrl, {
           method: "POST",
@@ -2711,6 +2712,7 @@ function initForms() {
           body: JSON.stringify({ code })
         });
         const payload = await response.json();
+        if (!response.ok && response.status !== 401) serviceUnavailable = true;
         if (response.ok && payload.ok && (!isEditorLogin || payload.token)) {
           if (isEditorLogin) {
             sessionStorage.removeItem(guestKey);
@@ -2727,7 +2729,7 @@ function initForms() {
           return;
         }
       } catch {
-        // Fall through to the same generic login error.
+        serviceUnavailable = true;
       }
 
       // Static copies can be opened without the local API server. Use the
@@ -2752,7 +2754,9 @@ function initForms() {
         return;
       }
 
-      els.loginError.textContent = "\u6697\u53f7\u4e0d\u5bf9\uff0c\u518d\u8bd5\u4e00\u6b21\u3002";
+      els.loginError.textContent = serviceUnavailable
+        ? "登录服务暂时不可用，请稍后重试。"
+        : "\u6697\u53f7\u4e0d\u5bf9\uff0c\u518d\u8bd5\u4e00\u6b21\u3002";
       els.loginCode.select();
     });
   }

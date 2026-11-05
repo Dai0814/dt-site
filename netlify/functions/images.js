@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { normalizeSupabaseUrl } = require("./_supabase");
 
 const IMAGE_CONTENT_TYPES = {
   "image/jpeg": "jpg",
@@ -42,7 +43,7 @@ exports.handler = async function handler(event) {
     return json(405, { ok: false, error: "method not allowed" });
   }
 
-  const supabaseUrl = String(process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+  const supabaseUrl = normalizeSupabaseUrl(process.env.SUPABASE_URL);
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || "";
   const bucket = String(process.env.SUPABASE_BUCKET || "album-photos").replace(/^\/+|\/+$/g, "");
   const uploadCode = process.env.EDIT_CODE || process.env.SUPABASE_UPLOAD_CODE || "";
