@@ -306,7 +306,7 @@ def upload_image_to_supabase(image_hash, extension, content_type, data):
         "x-upsert": "false",
     }
     # Legacy JWT keys (eyJ...) must be sent on both apikey and Authorization.
-    # New opaque keys (sb_secret_...) are not JWTs; sending them on
+    # New opaque Supabase service-role keys are not JWTs; sending them on
     # Authorization makes the platform try to parse them as a JWT and reject
     # the request, so they go on the apikey header only.
     if not SUPABASE_SERVICE_ROLE_KEY.startswith("sb_"):

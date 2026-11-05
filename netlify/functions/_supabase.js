@@ -66,7 +66,7 @@ const FETCH_TIMEOUT_MS = 9000; // under Netlify's 10s default limit
 async function getMainRow(value) {
   const endpoint = `${value.url}/rest/v1/${encodeURIComponent(value.table)}?id=eq.main&select=data,updated_at`;
   const headers = { apikey: value.key };
-  // New opaque keys (sb_secret_...) are not JWTs; sending them on
+  // New opaque Supabase service-role keys are not JWTs; sending them on
   // Authorization makes PostgREST reject the request, so they go on the
   // apikey header only (legacy eyJ JWT keys still use Authorization).
   if (!value.key.startsWith("sb_")) headers.Authorization = `Bearer ${value.key}`;

@@ -105,7 +105,7 @@ exports.handler = async function handler(event) {
     "x-upsert": "false",
   };
   // Legacy JWT keys (eyJ...) must be sent on both apikey and Authorization.
-  // New opaque keys (sb_secret_...) are not JWTs; sending them on
+  // New opaque Supabase service-role keys are not JWTs; sending them on
   // Authorization makes the platform parse them as a JWT and reject the
   // request, so they go on the apikey header only.
   if (!serviceRoleKey.startsWith("sb_")) {
