@@ -19,11 +19,21 @@ exports.handler = async function handler(event) {
   }
 
   try {
+    const entered = String(payload.code || "").trim();
+    // The deploy-time ACCESS_CODE env var is authoritative for the visitor gate
+    // and does NOT depend on the site_state table existing. This keeps the
+    // visitor login working even when Supabase state storage is unconfigured.
+    const envAccessCode = String(process.env.ACCESS_CODE || "").trim();
+    if (envAccessCode) {
+      if (!timingSafeEqual(entered, envAccessCode)) {
+        return json(401, { ok: false, error: "invalid access password" });
+      }
+      return json(200, { ok: true });
+    }
+    // Fallback only when the env is unset: stored data.accessCode.
     const row = await getMainRow(checked.value);
-    // The deploy-time ACCESS_CODE env var is authoritative for the visitor gate;
-    // the stored data.accessCode is only a fallback when the env is unset.
-    const accessCode = String(process.env.ACCESS_CODE || row.data?.accessCode || "").trim();
-    if (!accessCode || !timingSafeEqual(String(payload.code || "").trim(), accessCode)) {
+    const accessCode = String(row.data?.accessCode || "").trim();
+    if (!accessCode || !timingSafeEqual(entered, accessCode)) {
       return json(401, { ok: false, error: "invalid access password" });
     }
     return json(200, { ok: true });
